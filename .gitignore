@@ -1,0 +1,7 @@
+vendor/
+*.exe
+*.exe~
+*.test
+*.out
+judge
+.DS_Store

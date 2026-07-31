@@ -3,6 +3,8 @@ services:
     image: ghcr.io/forklifts-for-great-justice/judge-service:main
     container_name: judge
     restart: unless-stopped
+    ports:
+      - "8086:8086"
     networks:
       - scoreboard_network
     logging:

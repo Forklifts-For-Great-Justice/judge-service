@@ -14,7 +14,7 @@ services:
         max-file: "3"
     environment:
       - PORT=8086
-      - DB_DSN=postgres://scoreboard:changeme@postgres:5432/hackfortress?sslmode=disable
+      - DB_DSN=postgres://scoreboard:changeme@scoreboard.hackfortress.net:5432/hackfortress?sslmode=disable
       - RABBITMQ_URL=amqp://admin:adminpassword@admin.hackfortress.net:5672
       - RABBITMQ_EXCHANGE=hackfortress
 

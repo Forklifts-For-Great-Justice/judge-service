@@ -1,28 +1,25 @@
+// Package main is the entrypoint for JudgeService.
+// It wires the router, database, RabbitMQ publisher, and starts the HTTP server.
 package main
 
 import (
-	"fmt"
+	"context"
+	"database/sql"
 	"log"
 	"net/http"
 	"os"
 
-	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
+	chi "github.com/go-chi/chi/v5"
+	chiMiddleware "github.com/go-chi/chi/v5/middleware"
+
+	"github.com/forklifts-for-great-justice/judge-service/internal/handlers"
+	"github.com/forklifts-for-great-justice/judge-service/internal/openapi"
+	"github.com/forklifts-for-great-justice/judge-service/internal/rabbitmq"
+	"github.com/forklifts-for-great-justice/judge-service/internal/repository"
 )
 
 func main() {
-	r := chi.NewRouter()
-	r.Use(middleware.Logger)
-
-	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprintf(w, `{"message":"Hello, Judge Service!","status":"ok"}`)
-	})
-
-	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprintf(w, `{"status":"ok"}`)
-	})
+	r := NewRouter()
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -31,4 +28,66 @@ func main() {
 
 	log.Printf("Judge Service starting on :%s", port)
 	log.Fatal(http.ListenAndServe(":"+port, r))
+}
+
+// NewRouter creates the chi router with all routes wired up.
+func NewRouter() http.Handler {
+	r := chi.NewRouter()
+	r.Use(chiMiddleware.Logger)
+
+	db, err := openDB()
+	if err != nil {
+		// If no DB_DSN is set, proceed without database — useful for
+		// local development where the binary only serves /health and /openapi.json.
+		log.Println("WARNING: database not configured — /shenanigans routes disabled")
+	}
+
+	var repo *repository.ShananiganRepo
+	var pub *rabbitmq.Publisher
+
+	if db != nil {
+		repo = repository.NewShananiganRepo(db)
+
+		rabbitMQURL := os.Getenv("RABBITMQ_URL")
+		if rabbitMQURL != "" {
+			pub, err = rabbitmq.NewPublisher(context.Background(), rabbitMQURL, os.Getenv("RABBITMQ_EXCHANGE"))
+			if err != nil {
+				log.Printf("WARNING: failed to connect to RabbitMQ — messages will not be published: %v", err)
+			}
+		}
+	}
+
+	reg := openapi.NewRegistry()
+
+	// Health endpoint
+	handlers.RegisterHealthRoute(r, reg)
+	handlers.RegisterHealthOpenAPI(reg)
+
+	// Shenanigan routes
+	shenaniganHandler := handlers.NewShenaniganHandler(repo, pub)
+	handlers.RegisterRoutes(r, shenaniganHandler)
+	handlers.RegisterOpenAPI(reg)
+
+	// Wrap router so SchemaHandler is available on every call.
+	// This serves /openapi.json and registers the route in the spec.
+	return openapi.SchemaHandlerMiddleware(reg, r)
+}
+
+// openDB connects to PostgreSQL using DB_DSN from the environment.
+func openDB() (*sql.DB, error) {
+	dsn := os.Getenv("DB_DSN")
+	if dsn == "" {
+		return nil, nil
+	}
+
+	db, err := sql.Open("postgres", dsn)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := db.Ping(); err != nil {
+		return nil, err
+	}
+
+	return db, nil
 }

@@ -1,0 +1,270 @@
+{
+  "components": {
+    "schemas": {
+      "ActivateShananiganEnvelope": {
+        "properties": {
+          "shenanigans": {
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "ActivateShananiganRequest": {
+        "description": "Payload for activating (triggering) a shenanigan.",
+        "properties": {
+          "metadata": {
+            "type": "object"
+          },
+          "team": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "team"
+        ],
+        "type": "object"
+      },
+      "ActivateShananiganResponse": {
+        "properties": {
+          "published": {
+            "type": "boolean"
+          },
+          "purchase_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "ok"
+            ],
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "CreateShananiganRequest": {
+        "description": "Payload for creating a new shenanigan catalogue entry.",
+        "properties": {
+          "cost": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "description": {
+            "type": "string"
+          },
+          "metadata": {
+            "type": "object"
+          },
+          "name": {
+            "type": "string"
+          },
+          "rcon_payload": {
+            "type": "string"
+          },
+          "target_type": {
+            "enum": [
+              "team",
+              "all"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "description",
+          "rcon_payload",
+          "target_type"
+        ],
+        "type": "object"
+      },
+      "Shananigan": {
+        "description": "A shenanigan catalogue entry representing an activatable event.",
+        "properties": {
+          "cost": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "metadata": {
+            "description": "Arbitrary JSON metadata attached to this shenanigan.",
+            "type": "object"
+          },
+          "name": {
+            "type": "string"
+          },
+          "rcon_payload": {
+            "type": "string"
+          },
+          "target_type": {
+            "enum": [
+              "team",
+              "all"
+            ],
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "rcon_payload",
+          "target_type",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "ShananiganListEnvelope": {
+        "properties": {
+          "shenanigans": {
+            "items": {
+              "$ref": "#/components/schemas/Shananigan"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "description": "HackFortress judges web API: shenanigans, challenges, teams, and rounds.",
+    "title": "JudgeService",
+    "version": "0.1.0"
+  },
+  "openapi": "3.0.0",
+  "paths": {
+    "/health": {
+      "GET": {
+        "description": "Health check. Returns {\"status\":\"ok\"}.",
+        "operationId": "healthCheck",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/shenanigans": {
+      "GET": {
+        "description": "List all shenanigan catalogue entries.",
+        "operationId": "listShenanigans",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "POST": {
+        "description": "Create a new shenanigan catalogue entry.",
+        "operationId": "createShenanigan",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
+      }
+    },
+    "/shenanigans/{id}": {
+      "DELETE": {
+        "description": "Delete a shenanigan catalogue entry.",
+        "operationId": "deleteShenanigan",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      },
+      "GET": {
+        "description": "Get a single shenanigan catalogue entry by ID.",
+        "operationId": "getShenanigan",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      },
+      "PUT": {
+        "description": "Update an existing shenanigan catalogue entry.",
+        "operationId": "updateShenanigan",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/shenanigans/{id}/activate": {
+      "POST": {
+        "description": "Activate (trigger) a shenanigan. Resolves the rcon_payload, publishes a message to RabbitMQ, and returns the purchase result.",
+        "operationId": "activateShenanigan",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        },
+        "x-notes": "Judges do not deduct HackCoin — this is free for judges. Message is published to the exchange with routing key shenanigans.shenanigan.judge."
+      }
+    }
+  },
+  "servers": [
+    {
+      "url": "https://judge.hackfortress.net"
+    }
+  ]
+}

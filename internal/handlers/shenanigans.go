@@ -114,6 +114,11 @@ func RegisterOpenAPI(reg *openapi.Registry) {
 
 // HandleList serves GET /shenanigans — list all catalogue entries.
 func (h *ShenaniganHandler) HandleList(w http.ResponseWriter, req *http.Request) {
+	if h.repo == nil {
+		writeError(w, http.StatusServiceUnavailable, "database not available")
+		return
+	}
+
 	ctx := req.Context()
 
 	shenanigans, err := h.repo.GetAll(ctx)
@@ -131,6 +136,11 @@ func (h *ShenaniganHandler) HandleList(w http.ResponseWriter, req *http.Request)
 
 // HandleCreate serves POST /shenanigans — create a new catalogue entry.
 func (h *ShenaniganHandler) HandleCreate(w http.ResponseWriter, req *http.Request) {
+	if h.repo == nil {
+		writeError(w, http.StatusServiceUnavailable, "database not available")
+		return
+	}
+
 	ctx := req.Context()
 
 	var body struct {
@@ -178,6 +188,11 @@ func (h *ShenaniganHandler) HandleCreate(w http.ResponseWriter, req *http.Reques
 
 // HandleGet serves GET /shenanigans/{id} — get a single entry by ID.
 func (h *ShenaniganHandler) HandleGet(w http.ResponseWriter, req *http.Request) {
+	if h.repo == nil {
+		writeError(w, http.StatusServiceUnavailable, "database not available")
+		return
+	}
+
 	ctx := req.Context()
 	id, err := strconv.ParseInt(chi.URLParam(req, "id"), 10, 64)
 	if err != nil {
@@ -202,6 +217,11 @@ func (h *ShenaniganHandler) HandleGet(w http.ResponseWriter, req *http.Request) 
 
 // HandleUpdate serves PUT /shenanigans/{id} — update an existing entry.
 func (h *ShenaniganHandler) HandleUpdate(w http.ResponseWriter, req *http.Request) {
+	if h.repo == nil {
+		writeError(w, http.StatusServiceUnavailable, "database not available")
+		return
+	}
+
 	ctx := req.Context()
 	id, err := strconv.ParseInt(chi.URLParam(req, "id"), 10, 64)
 	if err != nil {
@@ -275,6 +295,11 @@ func (h *ShenaniganHandler) HandleUpdate(w http.ResponseWriter, req *http.Reques
 
 // HandleDelete serves DELETE /shenanigans/{id} — delete a catalogue entry.
 func (h *ShenaniganHandler) HandleDelete(w http.ResponseWriter, req *http.Request) {
+	if h.repo == nil {
+		writeError(w, http.StatusServiceUnavailable, "database not available")
+		return
+	}
+
 	ctx := req.Context()
 	id, err := strconv.ParseInt(chi.URLParam(req, "id"), 10, 64)
 	if err != nil {
@@ -296,6 +321,11 @@ func (h *ShenaniganHandler) HandleDelete(w http.ResponseWriter, req *http.Reques
 
 // HandleActivate serves POST /shenanigans/{id}/activate — trigger a shenanigan.
 func (h *ShenaniganHandler) HandleActivate(w http.ResponseWriter, req *http.Request) {
+	if h.repo == nil {
+		writeError(w, http.StatusServiceUnavailable, "database not available")
+		return
+	}
+
 	ctx := req.Context()
 	id, err := strconv.ParseInt(chi.URLParam(req, "id"), 10, 64)
 	if err != nil {

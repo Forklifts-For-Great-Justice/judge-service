@@ -152,7 +152,8 @@ func openDB() (*sql.DB, error) {
 		CONSTRAINT chk_team_slug_format CHECK (slug ~ '^[a-z0-9-]+$' AND length(slug) BETWEEN 2 AND 64)
 	);
 
-	CREATE TRIGGER IF NOT EXISTS trg_team_updated_at
+	DROP TRIGGER IF EXISTS trg_team_updated_at ON team;
+	CREATE TRIGGER trg_team_updated_at
 		BEFORE UPDATE ON team
 		FOR EACH ROW
 		EXECUTE FUNCTION set_updated_at();

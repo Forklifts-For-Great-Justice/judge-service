@@ -634,13 +634,24 @@ func contains(list, target string) bool {
 	return false
 }
 
-// isNilRepo returns true if the repository interface is nil or contains a nil concrete pointer.
+// isNilRepo returns true if the repository interface is nil or contains a nil concrete pointer or nil db field.
 func isNilRepo(r repository.Repository) bool {
 	if r == nil {
 		return true
 	}
 	v := reflect.ValueOf(r)
-	return v.Kind() == reflect.Ptr && v.IsNil()
+	if v.Kind() == reflect.Ptr {
+		if v.IsNil() {
+			return true
+		}
+		if elem := v.Elem(); elem.Kind() == reflect.Struct {
+			dbField := elem.FieldByName("db")
+			if dbField.IsValid() && dbField.Kind() == reflect.Ptr && dbField.IsNil() {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // writeError encodes a JSON error response and writes it to the response writer.

@@ -233,6 +233,9 @@ func joinStrings(ss []string, sep string) string {
 // Default page_size is 50, max is 200.
 // Returns (results, total_count, error).
 func (r *ShananiganRepo) GetFiltered(ctx context.Context, opts *FilterOptions) ([]*models.Shananigan, int64, error) {
+	if r == nil || r.db == nil {
+		return nil, 0, fmt.Errorf("database connection not available")
+	}
 	if opts == nil {
 		opts = &FilterOptions{}
 	}

@@ -98,7 +98,7 @@ func openDB() (*sql.DB, error) {
 		return nil, nil
 	}
 
-	db, err := sql.Open("postgres", dsn)
+	db, err := sql.Open("pgx", dsn)
 	if err != nil {
 		return nil, err
 	}

@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 
+	_ "github.com/jackc/pgx/v5/stdlib"
 	chi "github.com/go-chi/chi/v5"
 	chiMiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/prometheus/client_golang/prometheus"
@@ -52,12 +53,10 @@ func NewRouter() http.Handler {
 
 	db, err := openDB()
 	if err != nil {
-		// If no DB_DSN is set, proceed without database — useful for
-		// local development where the binary only serves /health and /openapi.json.
-		log.Println("WARNING: database not configured — /shenanigans routes disabled")
+		log.Printf("WARNING: database connection failed: %v — /shenanigans routes disabled", err)
 	}
 
-	var repo *repository.ShananiganRepo
+	var repo repository.Repository
 	var pub *rabbitmq.Publisher
 
 	if db != nil {

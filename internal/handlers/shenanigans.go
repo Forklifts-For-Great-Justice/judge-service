@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"reflect"
 	"strconv"
 	"strings"
 
@@ -172,7 +173,7 @@ func RegisterOpenAPI(reg *openapi.Registry) {
 
 // HandleList serves GET /shenanigans — list all catalogue entries.
 func (h *ShenaniganHandler) HandleList(w http.ResponseWriter, req *http.Request) {
-	if h.repo == nil {
+	if isNilRepo(h.repo) {
 		writeError(w, http.StatusServiceUnavailable, "database not available")
 		return
 	}
@@ -250,7 +251,7 @@ func (h *ShenaniganHandler) HandleList(w http.ResponseWriter, req *http.Request)
 
 // HandleCreate serves POST /shenanigans — create a new catalogue entry.
 func (h *ShenaniganHandler) HandleCreate(w http.ResponseWriter, req *http.Request) {
-	if h.repo == nil {
+	if isNilRepo(h.repo) {
 		writeError(w, http.StatusServiceUnavailable, "database not available")
 		return
 	}
@@ -311,7 +312,7 @@ func (h *ShenaniganHandler) HandleCreate(w http.ResponseWriter, req *http.Reques
 
 // HandleGet serves GET /shenanigans/{id} — get a single entry by ID.
 func (h *ShenaniganHandler) HandleGet(w http.ResponseWriter, req *http.Request) {
-	if h.repo == nil {
+	if isNilRepo(h.repo) {
 		writeError(w, http.StatusServiceUnavailable, "database not available")
 		return
 	}
@@ -340,7 +341,7 @@ func (h *ShenaniganHandler) HandleGet(w http.ResponseWriter, req *http.Request) 
 
 // HandleUpdate serves PUT /shenanigans/{id} — update an existing entry.
 func (h *ShenaniganHandler) HandleUpdate(w http.ResponseWriter, req *http.Request) {
-	if h.repo == nil {
+	if isNilRepo(h.repo) {
 		writeError(w, http.StatusServiceUnavailable, "database not available")
 		return
 	}
@@ -426,7 +427,7 @@ func (h *ShenaniganHandler) HandleUpdate(w http.ResponseWriter, req *http.Reques
 
 // HandleDelete serves DELETE /shenanigans/{id} — soft delete a catalogue entry.
 func (h *ShenaniganHandler) HandleDelete(w http.ResponseWriter, req *http.Request) {
-	if h.repo == nil {
+	if isNilRepo(h.repo) {
 		writeError(w, http.StatusServiceUnavailable, "database not available")
 		return
 	}
@@ -461,7 +462,7 @@ func (h *ShenaniganHandler) HandleDelete(w http.ResponseWriter, req *http.Reques
 
 // HandleActivate serves POST /shenanigans/{id}/activate — trigger a shenanigan.
 func (h *ShenaniganHandler) HandleActivate(w http.ResponseWriter, req *http.Request) {
-	if h.repo == nil {
+	if isNilRepo(h.repo) {
 		writeError(w, http.StatusServiceUnavailable, "database not available")
 		return
 	}
@@ -529,7 +530,7 @@ func (h *ShenaniganHandler) HandleActivate(w http.ResponseWriter, req *http.Requ
 // HandleListActivations serves GET /shenanigans/{id}/activations — list activations for a shenanigan.
 // Optional query param "status" filters by activation status.
 func (h *ShenaniganHandler) HandleListActivations(w http.ResponseWriter, req *http.Request) {
-	if h.repo == nil {
+	if isNilRepo(h.repo) {
 		writeError(w, http.StatusServiceUnavailable, "database not available")
 		return
 	}
@@ -570,7 +571,7 @@ func (h *ShenaniganHandler) HandleListActivations(w http.ResponseWriter, req *ht
 
 // HandleGetActivation serves GET /activations/{purchase_id} — retrieve a single activation by purchase ID.
 func (h *ShenaniganHandler) HandleGetActivation(w http.ResponseWriter, req *http.Request) {
-	if h.repo == nil {
+	if isNilRepo(h.repo) {
 		writeError(w, http.StatusServiceUnavailable, "database not available")
 		return
 	}
@@ -631,6 +632,15 @@ func contains(list, target string) bool {
 		}
 	}
 	return false
+}
+
+// isNilRepo returns true if the repository interface is nil or contains a nil concrete pointer.
+func isNilRepo(r repository.Repository) bool {
+	if r == nil {
+		return true
+	}
+	v := reflect.ValueOf(r)
+	return v.Kind() == reflect.Ptr && v.IsNil()
 }
 
 // writeError encodes a JSON error response and writes it to the response writer.

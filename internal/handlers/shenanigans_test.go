@@ -59,6 +59,10 @@ func (m *mockRepo) GetByID(_ context.Context, id int64) (*models.Shananigan, err
 	return s, nil
 }
 
+func (m *mockRepo) GetByIDDeleted(_ context.Context, id int64) (*models.Shananigan, error) {
+	return m.GetByID(nil, id)
+}
+
 func (m *mockRepo) GetAll(_ context.Context) ([]*models.Shananigan, error) {
 	result := make([]*models.Shananigan, 0, len(m.records))
 	for _, s := range m.records {

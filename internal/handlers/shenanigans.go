@@ -448,8 +448,8 @@ func (h *ShenaniganHandler) HandleDelete(w http.ResponseWriter, req *http.Reques
 		return
 	}
 
-	// Return the updated record with deleted_at set.
-	s, err := h.repo.GetByID(ctx, id)
+	// Return the soft-deleted record with deleted_at set.
+	s, err := h.repo.GetByIDDeleted(ctx, id)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, fmt.Sprintf("failed to reload shenanigan: %v", err))
 		return

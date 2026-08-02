@@ -31,6 +31,7 @@ type FilterOptions struct {
 type Repository interface {
 	Create(ctx context.Context, s *models.Shananigan) error
 	GetByID(ctx context.Context, id int64) (*models.Shananigan, error)
+	GetByIDDeleted(ctx context.Context, id int64) (*models.Shananigan, error)
 	GetAll(ctx context.Context) ([]*models.Shananigan, error)
 	GetFiltered(ctx context.Context, opts *FilterOptions) ([]*models.Shananigan, int64, error)
 	Update(ctx context.Context, id int64, updates map[string]any) error
@@ -77,6 +78,29 @@ func (r *ShananiganRepo) GetByID(ctx context.Context, id int64) (*models.Shanani
 	query := `
 		SELECT id, name, description, rcon_payload, target_type, cost, metadata, created_at, updated_at, deleted_at
 		FROM shenanigans WHERE id = $1 AND deleted_at IS NULL`
+
+	var deletedAt *time.Time
+	var meta *string
+	err := r.db.QueryRowContext(ctx, query, id).Scan(
+		&s.ID, &s.Name, &s.Description, &s.RconPayload, &s.TargetType,
+		&s.Cost, &meta, &s.CreatedAt, &s.UpdatedAt, &deletedAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, ErrNotFound
+	}
+	if meta != nil {
+		s.Metadata = json.RawMessage(*meta)
+	}
+	s.DeletedAt = deletedAt
+	return s, err
+}
+
+// GetByIDDeleted retrieves a shenanigan by ID including soft-deleted records.
+func (r *ShananiganRepo) GetByIDDeleted(ctx context.Context, id int64) (*models.Shananigan, error) {
+	s := &models.Shananigan{}
+	query := `
+		SELECT id, name, description, rcon_payload, target_type, cost, metadata, created_at, updated_at, deleted_at
+		FROM shenanigans WHERE id = $1`
 
 	var deletedAt *time.Time
 	var meta *string

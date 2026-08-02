@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	amqp "github.com/rabbitmq/amqp091-go"
+	"github.com/vmihailenco/msgpack/v5"
 )
 
 // ShenaniganMessage is the payload published when a shenanigan is activated.
@@ -91,12 +92,5 @@ func (p *Publisher) Close() {
 
 // encodeMsgpack marshals data to msgpack format.
 func encodeMsgpack(v any) ([]byte, error) {
-	// For now use JSON; full msgpack support requires
-	// "github.com/vmihailenco/msgpack/v5" import
-	data, err := json.Marshal(v)
-	if err != nil {
-		return nil, err
-	}
-	// Add msgpack preamble header if needed in the future
-	return data, nil
+	return msgpack.Marshal(v)
 }

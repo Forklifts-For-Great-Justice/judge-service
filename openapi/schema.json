@@ -1,5 +1,13 @@
 {
   "components": {
+    "securitySchemes": {
+      "judgeAuth": {
+        "description": "Judge authentication. Requires x-auth-user (identity) and x-auth-groups (must contain \"judge\") headers.",
+        "in": "header",
+        "name": "x-auth-user",
+        "type": "apiKey"
+      }
+    },
     "schemas": {
       "ActivateShananiganEnvelope": {
         "properties": {
@@ -127,17 +135,86 @@
         ],
         "type": "object"
       },
-      "ShananiganListEnvelope": {
-        "properties": {
-          "shenanigans": {
-            "items": {
-              "$ref": "#/components/schemas/Shananigan"
+"ShananiganListEnvelope": {
+          "properties": {
+            "page": {
+              "description": "Current page number (1-based)",
+              "format": "int64",
+              "type": "integer"
             },
-            "type": "array"
-          }
+            "page_size": {
+              "description": "Number of items per page",
+              "format": "int64",
+              "type": "integer"
+            },
+            "shenanigans": {
+              "description": "List of shenanigan catalogue entries",
+              "items": {
+                "$ref": "#/components/schemas/Shananigan"
+              },
+              "type": "array"
+            },
+            "total": {
+              "description": "Total count of matching shenanigans (before pagination)",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "type": "object"
         },
-        "type": "object"
-      }
+      "ActivationRecord": {
+          "description": "An activation (purchase) record representing an activated shenanigan.",
+          "properties": {
+            "created_at": {
+              "format": "date-time",
+              "type": "string"
+            },
+            "error_message": {
+              "type": "string"
+            },
+            "metadata": {
+              "type": "object"
+            },
+            "purchase_id": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "rcon_payload": {
+              "type": "string"
+            },
+            "shenanigan_id": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "status": {
+              "description": "\"pending\", \"confirmed\", or \"failed\"",
+              "type": "string"
+            },
+            "updated_at": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          "required": [
+            "purchase_id",
+            "shenanigan_id",
+            "status",
+            "created_at"
+          ],
+          "type": "object"
+        },
+        "ActivationRecordListEnvelope": {
+          "properties": {
+            "activations": {
+              "description": "List of activation records for a shenanigan",
+              "items": {
+                "$ref": "#/components/schemas/ActivationRecord"
+              },
+              "type": "array"
+            }
+          },
+          "type": "object"
+        }
     }
   },
   "info": {
@@ -159,18 +236,72 @@
       }
     },
     "/shenanigans": {
-      "GET": {
-        "description": "List all shenanigan catalogue entries.",
-        "operationId": "listShenanigans",
-        "responses": {
-          "200": {
-            "description": "OK"
+"GET": {
+          "description": "List all shenanigan catalogue entries.",
+          "operationId": "listShenanigans",
+          "parameters": [
+            {
+              "in": "query",
+              "name": "target_type",
+              "schema": {
+                "type": "string"
+              },
+              "description": "Filter by target type (\"team\" or \"all\")"
+            },
+            {
+              "in": "query",
+              "name": "min_cost",
+              "schema": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "description": "Minimum cost filter"
+            },
+            {
+              "in": "query",
+              "name": "max_cost",
+              "schema": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "description": "Maximum cost filter"
+            },
+            {
+              "in": "query",
+              "name": "page",
+              "schema": {
+                "default": 1,
+                "format": "int64",
+                "type": "integer"
+              },
+              "description": "Page number (1-based, default 1)"
+            },
+            {
+              "in": "query",
+              "name": "page_size",
+              "schema": {
+                "default": 50,
+                "format": "int64",
+                "maximum": 200,
+                "type": "integer"
+              },
+              "description": "Items per page (default 50, max 200)"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "OK"
+            }
           }
-        }
-      },
+        },
       "POST": {
         "description": "Create a new shenanigan catalogue entry.",
         "operationId": "createShenanigan",
+        "security": [
+          {
+            "judgeAuth": []
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -192,6 +323,11 @@
       "DELETE": {
         "description": "Delete a shenanigan catalogue entry.",
         "operationId": "deleteShenanigan",
+        "security": [
+          {
+            "judgeAuth": []
+          }
+        ],
         "responses": {
           "204": {
             "description": "No Content"
@@ -216,6 +352,11 @@
       "PUT": {
         "description": "Update an existing shenanigan catalogue entry.",
         "operationId": "updateShenanigan",
+        "security": [
+          {
+            "judgeAuth": []
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -259,6 +400,64 @@
           }
         },
         "x-notes": "Judges do not deduct HackCoin — this is free for judges. Message is published to the exchange with routing key shenanigans.shenanigan.judge."
+      }
+    },
+    "/shenanigans/{id}/activations": {
+      "GET": {
+        "description": "List all activation records for a shenanigan, optionally filtered by status query param. Returns 404 if the shenanigan does not exist.",
+        "operationId": "listActivations",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Optional status filter (\"pending\", \"confirmed\", \"failed\")"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/activations/{purchase_id}": {
+      "GET": {
+        "description": "Retrieve a single activation record by purchase ID. Used for idempotency checks during activation confirmation. Returns 404 if not found.",
+        "operationId": "getActivation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "purchase_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
       }
     }
   },

@@ -5,12 +5,16 @@ package main
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
 
 	chi "github.com/go-chi/chi/v5"
 	chiMiddleware "github.com/go-chi/chi/v5/middleware"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/forklifts-for-great-justice/judge-service/internal/handlers"
 	"github.com/forklifts-for-great-justice/judge-service/internal/openapi"
@@ -35,6 +39,17 @@ func NewRouter() http.Handler {
 	r := chi.NewRouter()
 	r.Use(chiMiddleware.Logger)
 
+	// Prometheus counters — auto-registered with the default registry.
+	shenaniganActivationsTotal := promauto.NewCounter(prometheus.CounterOpts{
+		Name: "shenanigan_activations_total", Help: "Total activations",
+	})
+	shenaniganCreationTotal := promauto.NewCounter(prometheus.CounterOpts{
+		Name: "shenanigan_creation_total", Help: "Total creations",
+	})
+	shenaniganPublishFailuresTotal := promauto.NewCounter(prometheus.CounterOpts{
+		Name: "shenanigan_publish_failures_total", Help: "Total publish failures",
+	})
+
 	db, err := openDB()
 	if err != nil {
 		// If no DB_DSN is set, proceed without database — useful for
@@ -57,6 +72,9 @@ func NewRouter() http.Handler {
 		}
 	}
 
+	// Mount /metrics before handler routes so it works independently of DB/shenanigans.
+	r.Handle("/metrics", promhttp.Handler())
+
 	reg := openapi.NewRegistry()
 
 	// Health endpoint
@@ -64,7 +82,8 @@ func NewRouter() http.Handler {
 	handlers.RegisterHealthOpenAPI(reg)
 
 	// Shenanigan routes
-	shenaniganHandler := handlers.NewShenaniganHandler(repo, pub)
+	metrics := handlers.NewCounterMetrics(shenaniganActivationsTotal, shenaniganCreationTotal, shenaniganPublishFailuresTotal)
+	shenaniganHandler := handlers.NewShenaniganHandler(repo, pub, metrics)
 	handlers.RegisterRoutes(r, shenaniganHandler)
 	handlers.RegisterOpenAPI(reg)
 
@@ -87,6 +106,11 @@ func openDB() (*sql.DB, error) {
 
 	if err := db.Ping(); err != nil {
 		return nil, err
+	}
+
+	// Ensure soft-delete column exists (idempotent migration).
+	if _, err := db.Exec("ALTER TABLE shenanigans ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP"); err != nil {
+		return nil, fmt.Errorf("migration failed: %w", err)
 	}
 
 	return db, nil

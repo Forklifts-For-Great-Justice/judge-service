@@ -7,8 +7,11 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/forklifts-for-great-justice/judge-service/internal/models"
 	"github.com/forklifts-for-great-justice/judge-service/internal/openapi"
@@ -20,6 +23,7 @@ import (
 type ShenaniganHandler struct {
 	repo      repository.Repository
 	publisher Publisher
+	metrics   ShenaniganMetrics
 }
 
 // Publisher defines the RabbitMQ publisher interface for shenanigan activation messages.
@@ -27,19 +31,53 @@ type Publisher interface {
 	Publish(ctx context.Context, msg rabbitmq.ShenaniganMessage) (bool, error)
 }
 
-// NewShenaniganHandler creates a new handler with the given repository and optional publisher.
-func NewShenaniganHandler(repo repository.Repository, publisher Publisher) *ShenaniganHandler {
-	return &ShenaniganHandler{repo: repo, publisher: publisher}
+// ShenaniganMetrics defines the Prometheus counter interface for shenanigan metrics.
+type ShenaniganMetrics interface {
+	IncrementActivations()
+	IncrementCreations()
+	IncrementPublishFailures()
+}
+
+// counterMetrics implements ShenaniganMetrics using three Prometheus counters.
+type counterMetrics struct {
+	activations     prometheus.Counter
+	creations       prometheus.Counter
+	publishFailures prometheus.Counter
+}
+
+// NewCounterMetrics creates a ShenaniganMetrics from three Prometheus counters.
+func NewCounterMetrics(activations, creations, publishFailures prometheus.Counter) ShenaniganMetrics {
+	return &counterMetrics{
+		activations:     activations,
+		creations:       creations,
+		publishFailures: publishFailures,
+	}
+}
+
+func (c *counterMetrics) IncrementActivations() { c.activations.Inc() }
+func (c *counterMetrics) IncrementCreations()   { c.creations.Inc() }
+func (c *counterMetrics) IncrementPublishFailures() { c.publishFailures.Inc() }
+
+// NewShenaniganHandler creates a new handler with the given repository, publisher, and metrics.
+func NewShenaniganHandler(repo repository.Repository, publisher Publisher, metrics ShenaniganMetrics) *ShenaniganHandler {
+	return &ShenaniganHandler{repo: repo, publisher: publisher, metrics: metrics}
 }
 
 // RegisterRoutes wires the shenanigan routes to the chi router.
+// GET routes (/shenanigans, /shenanigans/{id}) are public.
+// Admin routes (POST, PUT, DELETE) require judge-group auth.
 func RegisterRoutes(r chi.Router, h *ShenaniganHandler) {
 	r.Get("/shenanigans", h.HandleList)
-	r.Post("/shenanigans", h.HandleCreate)
+
+	r.Method("POST", "/shenanigans", AuthMiddleware(http.HandlerFunc(h.HandleCreate), "judge"))
 	r.Get("/shenanigans/{id}", h.HandleGet)
-	r.Put("/shenanigans/{id}", h.HandleUpdate)
-	r.Delete("/shenanigans/{id}", h.HandleDelete)
+
+	r.Method("PUT", "/shenanigans/{id}", AuthMiddleware(http.HandlerFunc(h.HandleUpdate), "judge"))
+	r.Method("DELETE", "/shenanigans/{id}", AuthMiddleware(http.HandlerFunc(h.HandleDelete), "judge"))
+
 	r.Post("/shenanigans/{id}/activate", h.HandleActivate)
+	r.Get("/shenanigans/{id}/activations", h.HandleListActivations)
+	r.Get("/activations/{purchase_id}", h.HandleGetActivation)
 }
 
 // RegisterOpenAPI registers the shenanigan routes with the OpenAPI registry.
@@ -89,9 +127,9 @@ func RegisterOpenAPI(reg *openapi.Registry) {
 			Method:      "DELETE",
 			Path:        "/shenanigans/{id}",
 			OperationID: "deleteShenanigan",
-			Description: "Delete a shenanigan catalogue entry.",
+			Description: "Soft-delete a shenanigan catalogue entry. Returns the updated entry with deleted_at set.",
 			Responses: []openapi.Response{
-				{Code: 204, Body: "none", Empty: true, EmptyBody: "No Content"},
+				{Code: 200, Body: "json"},
 				{Code: 404, Body: "json", Empty: false, EmptyBody: "Not Found"},
 			},
 		},
@@ -109,6 +147,26 @@ func RegisterOpenAPI(reg *openapi.Registry) {
 			Notes: "Judges do not deduct HackCoin — this is free for judges. " +
 				"Message is published to the exchange with routing key shenanigans.shenanigan.judge.",
 		},
+		openapi.Route{
+			Method:      "GET",
+			Path:        "/shenanigans/{id}/activations",
+			OperationID: "listActivations",
+			Description: "List all activation records for a shenanigan, optionally filtered by status query param.",
+			Responses: []openapi.Response{
+				{Code: 200, Body: "json"},
+				{Code: 404, Body: "json", Empty: false, EmptyBody: "Not Found"},
+			},
+		},
+		openapi.Route{
+			Method:      "GET",
+			Path:        "/activations/{purchase_id}",
+			OperationID: "getActivation",
+			Description: "Retrieve a single activation record by purchase ID. Used for idempotency checks during activation confirmation.",
+			Responses: []openapi.Response{
+				{Code: 200, Body: "json"},
+				{Code: 404, Body: "json", Empty: false, EmptyBody: "Not Found"},
+			},
+		},
 	)
 }
 
@@ -121,16 +179,72 @@ func (h *ShenaniganHandler) HandleList(w http.ResponseWriter, req *http.Request)
 
 	ctx := req.Context()
 
-	shenanigans, err := h.repo.GetAll(ctx)
+	q := req.URL.Query()
+
+	var minCost, maxCost *int64
+	if v := q.Get("min_cost"); v != "" {
+		val, err := strconv.ParseInt(v, 10, 64)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid min_cost")
+			return
+		}
+		minCost = &val
+	}
+	if v := q.Get("max_cost"); v != "" {
+		val, err := strconv.ParseInt(v, 10, 64)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid max_cost")
+			return
+		}
+		maxCost = &val
+	}
+
+	targetType := q.Get("target_type")
+
+	page := 1
+	if v := q.Get("page"); v != "" {
+		p, err := strconv.Atoi(v)
+		if err == nil && p > 0 {
+			page = p
+		}
+	}
+
+	pageSize := 50
+	if v := q.Get("page_size"); v != "" {
+		ps, err := strconv.Atoi(v)
+		if err == nil && ps > 0 {
+			pageSize = ps
+		}
+	}
+	const maxPageSize = 200
+	if pageSize > maxPageSize {
+		pageSize = maxPageSize
+	}
+
+	opts := &repository.FilterOptions{
+		TargetType: targetType,
+		MinCost:    minCost,
+		MaxCost:    maxCost,
+		Page:       page,
+		PageSize:   pageSize,
+	}
+
+	shenanigans, total, err := h.repo.GetFiltered(ctx, opts)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, fmt.Sprintf("failed to list shenanigans: %v", err))
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("X-Total-Count", strconv.FormatInt(total, 10))
+	w.Header().Set("X-Page", strconv.Itoa(page))
+	w.Header().Set("X-Page-Size", strconv.Itoa(pageSize))
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]any{
 		"shenanigans": shenanigans,
+		"total":       total,
+		"page":        page,
+		"page_size":   pageSize,
 	})
 }
 
@@ -176,9 +290,18 @@ func (h *ShenaniganHandler) HandleCreate(w http.ResponseWriter, req *http.Reques
 		Metadata:    body.Metadata,
 	}
 
+	if err := s.Validate(); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
 	if err := h.repo.Create(ctx, s); err != nil {
 		writeError(w, http.StatusInternalServerError, fmt.Sprintf("failed to create shenanigan: %v", err))
 		return
+	}
+
+	if h.metrics != nil {
+		h.metrics.IncrementCreations()
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -273,6 +396,14 @@ func (h *ShenaniganHandler) HandleUpdate(w http.ResponseWriter, req *http.Reques
 		return
 	}
 
+	// Validate target_type if it is being changed
+	if tt, ok := updates["target_type"].(string); ok {
+		if err := (&models.Shananigan{TargetType: tt}).Validate(); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	}
+
 	if err := h.repo.Update(ctx, id, updates); err != nil {
 		if err == repository.ErrNotFound {
 			writeError(w, http.StatusNotFound, "shenanigan not found")
@@ -293,7 +424,7 @@ func (h *ShenaniganHandler) HandleUpdate(w http.ResponseWriter, req *http.Reques
 	json.NewEncoder(w).Encode(updated)
 }
 
-// HandleDelete serves DELETE /shenanigans/{id} — delete a catalogue entry.
+// HandleDelete serves DELETE /shenanigans/{id} — soft delete a catalogue entry.
 func (h *ShenaniganHandler) HandleDelete(w http.ResponseWriter, req *http.Request) {
 	if h.repo == nil {
 		writeError(w, http.StatusServiceUnavailable, "database not available")
@@ -307,7 +438,7 @@ func (h *ShenaniganHandler) HandleDelete(w http.ResponseWriter, req *http.Reques
 		return
 	}
 
-	if err := h.repo.Delete(ctx, id); err != nil {
+	if err := h.repo.SoftDelete(ctx, id); err != nil {
 		if err == repository.ErrNotFound {
 			writeError(w, http.StatusNotFound, "shenanigan not found")
 			return
@@ -316,7 +447,16 @@ func (h *ShenaniganHandler) HandleDelete(w http.ResponseWriter, req *http.Reques
 		return
 	}
 
-	w.WriteHeader(http.StatusNoContent)
+	// Return the updated record with deleted_at set.
+	s, err := h.repo.GetByID(ctx, id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Sprintf("failed to reload shenanigan: %v", err))
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(s)
 }
 
 // HandleActivate serves POST /shenanigans/{id}/activate — trigger a shenanigan.
@@ -344,6 +484,9 @@ func (h *ShenaniganHandler) HandleActivate(w http.ResponseWriter, req *http.Requ
 	}
 
 	record, err := h.repo.Activate(ctx, id)
+	if h.metrics != nil {
+		h.metrics.IncrementActivations()
+	}
 	if err != nil {
 		if err == repository.ErrNotFound {
 			writeError(w, http.StatusNotFound, "shenanigan not found")
@@ -365,6 +508,9 @@ func (h *ShenaniganHandler) HandleActivate(w http.ResponseWriter, req *http.Requ
 
 		published, err = h.publisher.Publish(ctx, message)
 		if err != nil {
+			if h.metrics != nil {
+				h.metrics.IncrementPublishFailures()
+			}
 			status = "error"
 		}
 	}
@@ -378,6 +524,107 @@ func (h *ShenaniganHandler) HandleActivate(w http.ResponseWriter, req *http.Requ
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(resp)
+}
+
+// HandleListActivations serves GET /shenanigans/{id}/activations — list activations for a shenanigan.
+// Optional query param "status" filters by activation status.
+func (h *ShenaniganHandler) HandleListActivations(w http.ResponseWriter, req *http.Request) {
+	if h.repo == nil {
+		writeError(w, http.StatusServiceUnavailable, "database not available")
+		return
+	}
+
+	ctx := req.Context()
+	id, err := strconv.ParseInt(chi.URLParam(req, "id"), 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+
+	// Verify the shenanigan exists (even soft-deleted ones are visible via
+	// the regular GetByID which does not exist, since the shenanigan may have
+	// been soft-deleted — we just want to know if an ID was provided).
+	// Use GetShenaniganByID which calls GetByID (non-deleted only).
+	if _, err := h.repo.GetShenaniganByID(ctx, id); err != nil {
+		writeError(w, http.StatusNotFound, "shenanigan not found")
+		return
+	}
+
+	statusFilter := req.URL.Query().Get("status")
+	activations, err := h.repo.GetActivationsForShenanigan(ctx, id, statusFilter)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Sprintf("failed to list activations: %v", err))
+		return
+	}
+
+	if activations == nil {
+		activations = []*models.ActivationRecord{}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]any{
+		"activations": activations,
+	})
+}
+
+// HandleGetActivation serves GET /activations/{purchase_id} — retrieve a single activation by purchase ID.
+func (h *ShenaniganHandler) HandleGetActivation(w http.ResponseWriter, req *http.Request) {
+	if h.repo == nil {
+		writeError(w, http.StatusServiceUnavailable, "database not available")
+		return
+	}
+
+	ctx := req.Context()
+	purchaseID, err := uuid.Parse(chi.URLParam(req, "purchase_id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid purchase_id")
+		return
+	}
+
+	activation, err := h.repo.GetActivationByPurchaseID(ctx, purchaseID)
+	if err != nil {
+		if err == repository.ErrNotFound {
+			writeError(w, http.StatusNotFound, "activation not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, fmt.Sprintf("failed to get activation: %v", err))
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(activation)
+}
+
+// AuthMiddleware middleware that enforces judge-group membership.
+// Returns 401 if x-auth-user is missing, 403 if expected group is absent.
+func AuthMiddleware(next http.Handler, expectedGroup string) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		user := r.Header.Get("x-auth-user")
+		if user == "" {
+			writeError(w, http.StatusUnauthorized, "missing x-auth-user header")
+			return
+		}
+
+		groups := r.Header.Get("x-auth-groups")
+		if !contains(groups, expectedGroup) {
+			writeError(w, http.StatusForbidden, "missing required group: "+expectedGroup)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
+// contains checks whether the comma-separated groups string contains the target group.
+func contains(groups, target string) bool {
+	for _, g := range strings.Split(groups, ",") {
+		if strings.TrimSpace(g) == target {
+			return true
+		}
+	}
+	return false
 }
 
 // writeError encodes a JSON error response and writes it to the response writer.

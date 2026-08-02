@@ -30,7 +30,8 @@ func setupDB(t *testing.T) *sql.DB {
 		cost INTEGER,
 		metadata TEXT,
 		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
-		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+		deleted_at TIMESTAMP
 	);`
 
 	if _, err := db.Exec(createTable); err != nil {
@@ -467,5 +468,368 @@ func TestShananiganRepo_Activate_Returns_UUID(t *testing.T) {
 	record2, _ := repo.Activate(context.Background(), s.ID)
 	if record1.PurchaseID == record2.PurchaseID {
 		t.Error("expected different UUIDs for successive activations")
+	}
+}
+
+func TestGetFiltered_ByTargetType(t *testing.T) {
+	db := setupDB(t)
+	repo := repository.NewShananiganRepo(db)
+	ctx := context.Background()
+
+	_ = repo.Create(ctx, &models.Shananigan{Name: "A", Description: "x", RconPayload: "a", TargetType: "team"})
+	_ = repo.Create(ctx, &models.Shananigan{Name: "B", Description: "y", RconPayload: "b", TargetType: "all"})
+	_ = repo.Create(ctx, &models.Shananigan{Name: "C", Description: "z", RconPayload: "c", TargetType: "team"})
+
+	allT, totalT, err := repo.GetFiltered(ctx, &repository.FilterOptions{TargetType: "team"})
+	if err != nil {
+		t.Fatalf("getFiltered team: %v", err)
+	}
+	if totalT != 2 {
+		t.Errorf("total: want 2, got %d", totalT)
+	}
+	if len(allT) != 2 {
+		t.Fatalf("team results: want 2, got %d", len(allT))
+	}
+	for _, s := range allT {
+		if s.TargetType != "team" {
+			t.Errorf("expected team, got %s", s.TargetType)
+		}
+	}
+
+	allAll, _, _ := repo.GetFiltered(ctx, &repository.FilterOptions{TargetType: "all"})
+	if len(allAll) != 1 {
+		t.Errorf("all results: want 1, got %d", len(allAll))
+	}
+}
+
+func TestGetFiltered_ByCostRange(t *testing.T) {
+	db := setupDB(t)
+	repo := repository.NewShananiganRepo(db)
+	ctx := context.Background()
+
+	c1 := int64(10)
+	_ = repo.Create(ctx, &models.Shananigan{Name: "A", Description: "x", RconPayload: "a", TargetType: "team", Cost: &c1})
+	c2 := int64(50)
+	_ = repo.Create(ctx, &models.Shananigan{Name: "B", Description: "y", RconPayload: "b", TargetType: "all", Cost: &c2})
+	c3 := int64(100)
+	_ = repo.Create(ctx, &models.Shananigan{Name: "C", Description: "z", RconPayload: "c", TargetType: "team", Cost: &c3})
+
+	filtered, total, err := repo.GetFiltered(ctx, &repository.FilterOptions{MinCost: &c2, MaxCost: &c3})
+	if err != nil {
+		t.Fatalf("getFiltered cost range: %v", err)
+	}
+	if total != 2 {
+		t.Errorf("total: want 2, got %d", total)
+	}
+	if len(filtered) != 2 {
+		t.Fatalf("cost range results: want 2, got %d", len(filtered))
+	}
+	for _, s := range filtered {
+		if *s.Cost < 50 || *s.Cost > 100 {
+			t.Errorf("cost %d not in range [50,100]", *s.Cost)
+		}
+	}
+}
+
+func filterPaginated(db *sql.DB, repo *repository.ShananiganRepo, ctx context.Context, targetType string, page, pageSize int) ([]*models.Shananigan, int64, error) {
+	return repo.GetFiltered(ctx, &repository.FilterOptions{
+		TargetType: targetType,
+		Page:       page,
+		PageSize:   pageSize,
+	})
+}
+
+func TestGetFiltered_PaginationFirstPage(t *testing.T) {
+	db := setupDB(t)
+	repo := repository.NewShananiganRepo(db)
+	ctx := context.Background()
+
+	cost := int64(100)
+	for i := 0; i < 7; i++ {
+		_ = repo.Create(ctx, &models.Shananigan{
+			Name:        fmt.Sprintf("T%d", i),
+			Description: "x",
+			RconPayload: fmt.Sprintf("r%d", i),
+			TargetType:  "team",
+			Cost:        &cost,
+		})
+	}
+
+	p1, total, _ := filterPaginated(db, repo, ctx, "team", 1, 3)
+	if total != 7 {
+		t.Errorf("total: want 7, got %d", total)
+	}
+	if len(p1) != 3 {
+		t.Errorf("page 1 results: want 3, got %d", len(p1))
+	}
+}
+
+func TestGetFiltered_PaginationLastPage(t *testing.T) {
+	db := setupDB(t)
+	repo := repository.NewShananiganRepo(db)
+	ctx := context.Background()
+
+	cost := int64(100)
+	for i := 0; i < 7; i++ {
+		_ = repo.Create(ctx, &models.Shananigan{
+			Name:        fmt.Sprintf("T%d", i),
+			Description: "x",
+			RconPayload: fmt.Sprintf("r%d", i),
+			TargetType:  "team",
+			Cost:        &cost,
+		})
+	}
+
+	p3, total, _ := filterPaginated(db, repo, ctx, "team", 3, 3)
+	if len(p3) != 1 {
+		t.Errorf("page 3 (last) results: want 1, got %d", len(p3))
+	}
+	if total != 7 {
+		t.Errorf("total: want 7, got %d", total)
+	}
+}
+
+func TestGetFiltered_NoFilterReturnsAll(t *testing.T) {
+	db := setupDB(t)
+	repo := repository.NewShananiganRepo(db)
+	ctx := context.Background()
+
+	for i := 0; i < 10; i++ {
+		_ = repo.Create(ctx, &models.Shananigan{
+			Name:        fmt.Sprintf("S%d", i),
+			Description: "x",
+			RconPayload: fmt.Sprintf("r%d", i),
+			TargetType:  "team",
+		})
+	}
+
+	results, total, _ := repo.GetFiltered(ctx, &repository.FilterOptions{})
+	if total != 10 {
+		t.Errorf("total: want 10, got %d", total)
+	}
+	if len(results) != 10 {
+		t.Errorf("all results: want 10, got %d", len(results))
+	}
+}
+
+func TestGetFiltered_DefaultPageSize(t *testing.T) {
+	db := setupDB(t)
+	repo := repository.NewShananiganRepo(db)
+	ctx := context.Background()
+
+	for i := 0; i < 5; i++ {
+		_ = repo.Create(ctx, &models.Shananigan{
+			Name:        fmt.Sprintf("D%d", i),
+			Description: "x",
+			RconPayload: fmt.Sprintf("r%d", i),
+			TargetType:  "team",
+		})
+	}
+
+	withPageSize, _, _ := repo.GetFiltered(ctx, &repository.FilterOptions{Page: 1, PageSize: 5})
+	if len(withPageSize) != 5 {
+		t.Errorf("with size: want 5, got %d", len(withPageSize))
+	}
+
+	withoutPageSize, _, _ := repo.GetFiltered(ctx, &repository.FilterOptions{Page: 1})
+	if len(withoutPageSize) != 5 {
+		t.Errorf("default size should return all 5: got %d", len(withoutPageSize))
+	}
+
+	invalidPageSize, _, _ := repo.GetFiltered(ctx, &repository.FilterOptions{Page: 1, PageSize: 0})
+	if len(invalidPageSize) != 5 {
+		t.Errorf("invalid page size should default to 50: got %d", len(invalidPageSize))
+	}
+}
+
+func TestGetFiltered_PaginationPageSizeExceedsTotal(t *testing.T) {
+	db := setupDB(t)
+	repo := repository.NewShananiganRepo(db)
+	ctx := context.Background()
+
+	for i := 0; i < 3; i++ {
+		_ = repo.Create(ctx, &models.Shananigan{
+			Name:        fmt.Sprintf("E%d", i),
+			Description: "x",
+			RconPayload: fmt.Sprintf("r%d", i),
+			TargetType:  "team",
+		})
+	}
+
+	result, total, _ := filterPaginated(db, repo, ctx, "team", 1, 100)
+	if len(result) != 3 {
+		t.Errorf("page size 100 with 3 items: want 3, got %d", len(result))
+	}
+	if total != 3 {
+		t.Errorf("total: want 3, got %d", total)
+	}
+}
+
+func TestGetFiltered_MaxPageSizeClamped(t *testing.T) {
+	db := setupDB(t)
+	repo := repository.NewShananiganRepo(db)
+	ctx := context.Background()
+
+	for i := 0; i < 250; i++ {
+		_ = repo.Create(ctx, &models.Shananigan{
+			Name:        fmt.Sprintf("M%d", i),
+			Description: "x",
+			RconPayload: fmt.Sprintf("r%d", i),
+			TargetType:  "team",
+		})
+	}
+
+	_, total, _ := repo.GetFiltered(ctx, &repository.FilterOptions{Page: 1, PageSize: 500})
+	if total != 250 {
+		t.Errorf("total with 250 items: want 250, got %d", total)
+	}
+
+	p1, _, _ := repo.GetFiltered(ctx, &repository.FilterOptions{Page: 1, PageSize: 500})
+	if len(p1) > 200 {
+		t.Errorf("page_size 500 should be clamped to 200: got %d items", len(p1))
+	}
+	if len(p1) != 200 {
+		t.Errorf("page_size 500 clamped to 200, should return 200 items: got %d", len(p1))
+	}
+
+	p2, _, _ := repo.GetFiltered(ctx, &repository.FilterOptions{Page: 2, PageSize: 500})
+	if totalP2 := len(p2); totalP2 != 50 {
+		// 250 total, page_size clamped to 200, page 2 starts at offset 200
+		t.Errorf("page 2 should return remaining 50: got %d", totalP2)
+	}
+}
+
+func TestGetFiltered_OrderByID(t *testing.T) {
+	db := setupDB(t)
+	repo := repository.NewShananiganRepo(db)
+	ctx := context.Background()
+
+	for i := 0; i < 5; i++ {
+		_ = repo.Create(ctx, &models.Shananigan{
+			Name:        fmt.Sprintf("X%d", 4-i),
+			Description: "x",
+			RconPayload: fmt.Sprintf("r%d", 4-i),
+			TargetType:  "team",
+		})
+	}
+
+	results, _, _ := repo.GetFiltered(ctx, &repository.FilterOptions{})
+	if len(results) != 5 {
+		t.Fatalf("want 5 results, got %d", len(results))
+	}
+	if results[0].Name != "X4" {
+		t.Errorf("first item should be X4 (creation order), got %s", results[0].Name)
+	}
+	if results[4].Name != "X0" {
+		t.Errorf("last item should be X0 (creation order), got %s", results[4].Name)
+	}
+}
+
+// ===== Phase 1C soft-delete tests =====
+
+func TestSoftDelete_HidesFromQueries(t *testing.T) {
+	db := setupDB(t)
+	repo := repository.NewShananiganRepo(db)
+	ctx := context.Background()
+
+	// Create two records
+	_ = repo.Create(ctx, &models.Shananigan{Name: "Hidden", Description: "gone", RconPayload: "h", TargetType: "team"})
+	_ = repo.Create(ctx, &models.Shananigan{Name: "Visible", Description: "stays", RconPayload: "v", TargetType: "team"})
+
+	// Soft-delete record 1
+	if err := repo.SoftDelete(ctx, 1); err != nil {
+		t.Fatalf("soft delete: %v", err)
+	}
+
+	// Verify GetByID returns ErrNotFound for deleted record
+	_, err := repo.GetByID(ctx, 1)
+	if err != repository.ErrNotFound {
+		t.Fatalf("expected ErrNotFound after soft delete, got %v", err)
+	}
+
+	// Verify GetByID still works for non-deleted record
+	v, err := repo.GetByID(ctx, 2)
+	if err != nil {
+		t.Fatalf("GetByID for non-deleted record: %v", err)
+	}
+	if v.Name != "Visible" {
+		t.Errorf("expected 'Visible', got %s", v.Name)
+	}
+
+	// Verify GetAll excludes soft-deleted
+	all, err := repo.GetAll(ctx)
+	if err != nil {
+		t.Fatalf("get all: %v", err)
+	}
+	if len(all) != 1 {
+		t.Fatalf("expected 1 non-deleted, got %d", len(all))
+	}
+	if all[0].Name != "Visible" {
+		t.Errorf("expected 'Visible', got %s", all[0].Name)
+	}
+
+	// Verify GetFiltered excludes soft-deleted
+	results, total, err := repo.GetFiltered(ctx, &repository.FilterOptions{})
+	if err != nil {
+		t.Fatalf("get filtered: %v", err)
+	}
+	if total != 1 {
+		t.Errorf("total: want 1, got %d", total)
+	}
+	if len(results) != 1 {
+		t.Fatalf("filtered: want 1, got %d", len(results))
+	}
+}
+
+func TestSoftDelete_SqliteCompatibility(t *testing.T) {
+	db := setupDB(t)
+	repo := repository.NewShananiganRepo(db)
+	ctx := context.Background()
+
+	// Insert directly (bypass repo Create) to test DELETE with CURRENT_TIMESTAMP
+	// This verifies the SoftDelete SQL works in SQLite
+	_, err := db.ExecContext(ctx,
+		`INSERT INTO shenanigans (name, description, rcon_payload, target_type, cost, metadata) VALUES (?, ?, ?, ?, ?, ?)`,
+		"DbDirect", "desc", "db", "all", 10, "{}")
+
+	if err != nil {
+		t.Fatalf("direct insert: %v", err)
+	}
+
+	// Verify SoftDelete works with SQLite
+	if err := repo.SoftDelete(ctx, 1); err != nil {
+		t.Fatalf("soft delete on sqlite: %v", err)
+	}
+
+	// Verify SoftDelete on already-soft-deleted returns ErrNotFound
+	if err := repo.SoftDelete(ctx, 1); err != repository.ErrNotFound {
+		t.Fatalf("re-soft-delete expected ErrNotFound, got %v", err)
+	}
+}
+
+func TestSoftDelete_DuplicateSoftDelete(t *testing.T) {
+	db := setupDB(t)
+	repo := repository.NewShananiganRepo(db)
+	ctx := context.Background()
+
+	s := &models.Shananigan{Name: "Duplicate", Description: "test", RconPayload: "t", TargetType: "team"}
+	if err := repo.Create(ctx, s); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	// First soft-delete succeeds
+	if err := repo.SoftDelete(ctx, s.ID); err != nil {
+		t.Fatalf("first soft delete: %v", err)
+	}
+
+	// Second soft-delete returns ErrNotFound (idempotent constraint)
+	if err := repo.SoftDelete(ctx, s.ID); err != repository.ErrNotFound {
+		t.Fatalf("expected ErrNotFound on re-delete, got %v", err)
+	}
+
+	// Verify GetByID still returns ErrNotFound (record is still filtered)
+	_, err := repo.GetByID(ctx, s.ID)
+	if err != repository.ErrNotFound {
+		t.Errorf("expected ErrNotFound, got %v", err)
 	}
 }

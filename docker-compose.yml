@@ -12,6 +12,7 @@ services:
       - "proxy.host=judge.hackfortress.net"
       - "proxy.port=8086"
       - "proxy.auth_required=true"
+      - "proxy.client_id=judge-client"
       - "proxy.openapi_path=/openapi.json"
     logging:
       driver: json-file

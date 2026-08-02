@@ -23,7 +23,7 @@ The service does **not** implement its own auth. Every request comes through the
 | header | source | purpose |
 |--------|--------|---------|
 | `x-auth-user` | JWT subject | user identity |
-| `x-auth-groups` | JWT `scp` claim (comma-separated) | must include `judge` |
+| `x-auth-scope` | JWT `scp`/`scope` claim | must include `judge` |
 | `x-auth-email` | JWT email claim | optional audit log |
 
 ## URL Structure

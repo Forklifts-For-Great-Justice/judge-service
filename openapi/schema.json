@@ -2,7 +2,7 @@
   "components": {
     "securitySchemes": {
       "judgeAuth": {
-        "description": "Judge authentication. Requires x-auth-user (identity) and x-auth-groups (must contain \"judge\") headers.",
+        "description": "Judge authentication. Requires x-auth-user (identity) and x-auth-scope (must contain \"judge\") headers.",
         "in": "header",
         "name": "x-auth-user",
         "type": "apiKey"

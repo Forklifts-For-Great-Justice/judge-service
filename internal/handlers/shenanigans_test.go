@@ -1224,26 +1224,35 @@ func TestMetrics(t *testing.T) {
 
 // ===== Auth middleware tests (Phase 4B) =====
 
-func TestAuthMiddleware_JudgeGroup_Passes(t *testing.T) {
+func TestAuthMiddleware_JudgeScope_Passes(t *testing.T) {
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
 
 	middleware := handlers.AuthMiddleware(next, "judge")
 
-	req := httptest.NewRequest("POST", "/shenanigans", nil)
-	req.Header.Set("x-auth-user", "shaman-1")
-	req.Header.Set("x-auth-groups", "judge")
-	w := httptest.NewRecorder()
+	// Test via x-auth-scope
+	req1 := httptest.NewRequest("POST", "/shenanigans", nil)
+	req1.Header.Set("x-auth-user", "shaman-1")
+	req1.Header.Set("x-auth-scope", "openid profile judge")
+	w1 := httptest.NewRecorder()
+	middleware.ServeHTTP(w1, req1)
+	if w1.Code != http.StatusOK {
+		t.Errorf("expected 200 for judge scope in x-auth-scope, got %d", w1.Code)
+	}
 
-	middleware.ServeHTTP(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Errorf("expected 200 for judge group, got %d", w.Code)
+	// Test via x-auth-groups fallback
+	req2 := httptest.NewRequest("POST", "/shenanigans", nil)
+	req2.Header.Set("x-auth-user", "shaman-1")
+	req2.Header.Set("x-auth-groups", "judge")
+	w2 := httptest.NewRecorder()
+	middleware.ServeHTTP(w2, req2)
+	if w2.Code != http.StatusOK {
+		t.Errorf("expected 200 for judge group in x-auth-groups, got %d", w2.Code)
 	}
 }
 
-func TestAuthMiddleware_NonJudgeGroup_Rejected(t *testing.T) {
+func TestAuthMiddleware_NonJudgeScope_Rejected(t *testing.T) {
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
@@ -1252,13 +1261,13 @@ func TestAuthMiddleware_NonJudgeGroup_Rejected(t *testing.T) {
 
 	req := httptest.NewRequest("POST", "/shenanigans", nil)
 	req.Header.Set("x-auth-user", "judge-user")
-	req.Header.Set("x-auth-groups", "spectator")
+	req.Header.Set("x-auth-scope", "spectator")
 	w := httptest.NewRecorder()
 
 	middleware.ServeHTTP(w, req)
 
 	if w.Code != http.StatusForbidden {
-		t.Errorf("expected 403 for non-judge group, got %d", w.Code)
+		t.Errorf("expected 403 for non-judge scope, got %d", w.Code)
 	}
 }
 

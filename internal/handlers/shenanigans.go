@@ -65,7 +65,7 @@ func NewShenaniganHandler(repo repository.Repository, publisher Publisher, metri
 
 // RegisterRoutes wires the shenanigan routes to the chi router.
 // GET routes (/shenanigans, /shenanigans/{id}) are public.
-// Admin routes (POST, PUT, DELETE) require judge-group auth.
+// Admin routes (POST, PUT, DELETE) require judge scope auth.
 func RegisterRoutes(r chi.Router, h *ShenaniganHandler) {
 	r.Get("/shenanigans", h.HandleList)
 
@@ -597,9 +597,9 @@ func (h *ShenaniganHandler) HandleGetActivation(w http.ResponseWriter, req *http
 	json.NewEncoder(w).Encode(activation)
 }
 
-// AuthMiddleware middleware that enforces judge-group membership.
-// Returns 401 if x-auth-user is missing, 403 if expected group is absent.
-func AuthMiddleware(next http.Handler, expectedGroup string) http.Handler {
+// AuthMiddleware middleware that enforces required scope (e.g. judge).
+// Returns 401 if x-auth-user is missing, 403 if expected scope is absent.
+func AuthMiddleware(next http.Handler, expectedScope string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		user := r.Header.Get("x-auth-user")
 		if user == "" {
@@ -607,9 +607,12 @@ func AuthMiddleware(next http.Handler, expectedGroup string) http.Handler {
 			return
 		}
 
-		groups := r.Header.Get("x-auth-groups")
-		if !contains(groups, expectedGroup) {
-			writeError(w, http.StatusForbidden, "missing required group: "+expectedGroup)
+		scopes := r.Header.Get("x-auth-scope")
+		if scopes == "" {
+			scopes = r.Header.Get("x-auth-groups")
+		}
+		if !contains(scopes, expectedScope) {
+			writeError(w, http.StatusForbidden, "missing required scope: "+expectedScope)
 			return
 		}
 
@@ -617,9 +620,12 @@ func AuthMiddleware(next http.Handler, expectedGroup string) http.Handler {
 	})
 }
 
-// contains checks whether the comma-separated groups string contains the target group.
-func contains(groups, target string) bool {
-	for _, g := range strings.Split(groups, ",") {
+// contains checks whether the space/comma-separated scopes or groups string contains the target scope.
+func contains(list, target string) bool {
+	fields := strings.FieldsFunc(list, func(r rune) bool {
+		return r == ',' || r == ' '
+	})
+	for _, g := range fields {
 		if strings.TrimSpace(g) == target {
 			return true
 		}

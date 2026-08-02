@@ -145,12 +145,15 @@ CREATE TABLE IF NOT EXISTS team (
 		id          SERIAL PRIMARY KEY,
 		slug        TEXT NOT NULL UNIQUE,
 		name        TEXT NOT NULL,
-		alt_name    TEXT NOT NULL UNIQUE UNIQUE,
+		alt_name    TEXT NOT NULL UNIQUE,
 		clan_tag    TEXT NOT NULL UNIQUE,
-		created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+		created_at  TIMESTAMP NOT NULL DEFAULT NOW(),
+		updated_at  TIMESTAMP NOT NULL DEFAULT NOW(),
 		CONSTRAINT chk_team_slug_format CHECK (slug ~ '^[a-z0-9-]+$' AND length(slug) BETWEEN 2 AND 64)
 	);
+
+	ALTER TABLE team ALTER COLUMN created_at TYPE TIMESTAMP USING created_at::TIMESTAMP;
+	ALTER TABLE team ALTER COLUMN updated_at TYPE TIMESTAMP USING updated_at::TIMESTAMP;
 
 	DROP TRIGGER IF EXISTS trg_team_updated_at ON team;
 	CREATE TRIGGER trg_team_updated_at

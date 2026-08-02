@@ -141,14 +141,14 @@ func openDB() (*sql.DB, error) {
 
 	// Create teams table (idempotent).
 	const teamsTableSQL = `
-	CREATE TABLE IF NOT EXISTS team (
+CREATE TABLE IF NOT EXISTS team (
 		id          SERIAL PRIMARY KEY,
 		slug        TEXT NOT NULL UNIQUE,
 		name        TEXT NOT NULL,
-		alt_name    TEXT NOT NULL UNIQUE,
+		alt_name    TEXT NOT NULL UNIQUE UNIQUE,
 		clan_tag    TEXT NOT NULL UNIQUE,
-		created_at  TEXT NOT NULL DEFAULT NOW(),
-		updated_at  TEXT NOT NULL DEFAULT NOW(),
+		created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+		updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 		CONSTRAINT chk_team_slug_format CHECK (slug ~ '^[a-z0-9-]+$' AND length(slug) BETWEEN 2 AND 64)
 	);
 

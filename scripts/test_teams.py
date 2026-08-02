@@ -9,9 +9,9 @@ Auth flow (M2M client_credentials):
 
 Usage:
   python3 test_teams.py list
-  python3 test_teams.py create --name "Red Team" --color red
+  python3 test_teams.py create --name "Red Team" --slug red-crew --alt-name "Red Crew" --clan-tag "RED"
   python3 test_teams.py get <id>
-  python3 test_teams.py update <id> --name "Red Team Updated" --color blue
+  python3 test_teams.py update <id> --name "Updated Team" --slug updated-crew --clan-tag "UPD"
   python3 test_teams.py delete <id>
   python3 test_teams.py full-cycle
 """
@@ -158,7 +158,7 @@ def cmd_list(args, headers: dict, token: str):
         teams = data.get("teams", [])
         print(f"     Total teams: {len(teams)}")
         for t in teams:
-            print(f"       - id={t.get('id')}, name={t.get('name')}, color={t.get('color')}")
+            print(f"       - id={t.get('id')}, name={t.get('name')}, slug={t.get('slug')}, clan_tag={t.get('clan_tag')}")
     return print_response(code, data)
 
 
@@ -171,14 +171,11 @@ def cmd_get(args, headers: dict, token: str):
 
 def cmd_create(args, headers: dict, token: str):
     """POST /teams"""
-    color = getattr(args, "color", "red").lower()
-    if color not in ("red", "blue"):
-        print(f"ERROR: color must be 'red' or 'blue', got '{color}'", file=sys.stderr)
-        sys.exit(1)
-
     payload = {
+        "slug": args.slug if hasattr(args, "slug") and args.slug else args.name.replace(" ", "-").lower(),
         "name": args.name,
-        "color": color,
+        "alt_name": args.alt_name if hasattr(args, "alt_name") and args.alt_name else args.name + " Alt",
+        "clan_tag": args.clan_tag if hasattr(args, "clan_tag") and args.clan_tag else args.name[:3].upper(),
     }
 
     print(f"  -> POST {_config['judge_url']}/teams")
@@ -192,15 +189,15 @@ def cmd_update(args, headers: dict, token: str):
     payload = {}
     if hasattr(args, "name") and args.name:
         payload["name"] = args.name
-    if hasattr(args, "color") and args.color:
-        color = args.color.lower()
-        if color not in ("red", "blue"):
-            print(f"ERROR: color must be 'red' or 'blue', got '{color}'", file=sys.stderr)
-            sys.exit(1)
-        payload["color"] = color
+    if hasattr(args, "clan_tag") and args.clan_tag:
+        payload["clan_tag"] = args.clan_tag
+    if hasattr(args, "slug") and args.slug:
+        payload["slug"] = args.slug
+    if hasattr(args, "alt_name") and args.alt_name:
+        payload["alt_name"] = args.alt_name
 
     if not payload:
-        print("ERROR: update requires at least --name or --color", file=sys.stderr)
+        print("ERROR: update requires at least --name, --clan-tag, --slug, or --alt-name", file=sys.stderr)
         sys.exit(1)
 
     print(f"  -> PUT {_config['judge_url']}/teams/{args.id}")
@@ -218,8 +215,8 @@ def cmd_delete(args, headers: dict, token: str):
 
 def cmd_full_cycle(args, headers: dict, token: str):
     """Full CRUD cycle: create, get, update, verify, delete, confirm."""
-    team_name = args.name if hasattr(args, "name") and args.name else f"Cycle-Team-{int(sys.version_info[0] * 1000 + sys.version_info[1])}"
-    team_color = getattr(args, "color", "red").lower() if hasattr(args, "color") else "red"
+    team_name = args.name if hasattr(args, "name") and args.name else "Cycle-Team"
+    clan_tag = getattr(args, "clan_tag", "CYC").upper() if hasattr(args, "clan_tag") else "CYC"
     passed = 0
     failed = 0
 
@@ -234,8 +231,18 @@ def cmd_full_cycle(args, headers: dict, token: str):
             print(f"     [FAIL] {label} (HTTP {code})")
 
     print("[CRUD Cycle] Create")
-    create_payload = {"name": team_name, "color": team_color}
+    # Generate proper slug and alt_name for the test
+    base_slug = team_name.lower().replace(" ", "-").replace("_", "-").replace(",", "-")
+    slug = f"{base_slug}-test"
+    alt_name = f"{team_name} Alternative"
+    create_payload = {
+        "name": team_name,
+        "slug": slug,
+        "alt_name": alt_name,
+        "clan_tag": clan_tag,
+    }
     print(f"  -> POST /teams")
+    print(f"     body: {json.dumps(create_payload, indent=2)}")
     code, data = make_request("POST", "/teams", headers, token, create_payload)
     if code == 201:
         team_id = data.get("id") or data.get("team", {}).get("id")
@@ -252,12 +259,19 @@ def cmd_full_cycle(args, headers: dict, token: str):
     team = data.get("team", data)
     expect_ok(code, "Get team by ID")
     created_name = team.get("name", "")
+    created_slug = team.get("slug", "")
+    created_clan_tag = team.get("clan_tag", "")
 
     print()
     print("[CRUD Cycle] Update")
     updated_name = f"{team_name}-Updated"
-    updated_color = "blue" if team_color == "red" else "red"
-    update_payload = {"name": updated_name, "color": updated_color}
+    updated_clan_tag = "UPD"
+    updated_slug = f"{base_slug}-updated"
+    update_payload = {
+        "name": updated_name,
+        "clan_tag": updated_clan_tag,
+        "slug": updated_slug,
+    }
     print(f"  -> PUT /teams/{team_id}")
     print(f"     body: {json.dumps(update_payload, indent=2)}")
     code, data = make_request("PUT", f"/teams/{team_id}", headers, token, update_payload)
@@ -265,8 +279,9 @@ def cmd_full_cycle(args, headers: dict, token: str):
     if code == 200:
         updated_team = data.get("team", data)
         actual_name = updated_team.get("name", "")
-        actual_color = updated_team.get("color", "")
-        print(f"     Verified: name={actual_name} (expected={updated_name}), color={actual_color} (expected={updated_color})")
+        actual_clan_tag = updated_team.get("clan_tag", "")
+        actual_slug = updated_team.get("slug", "")
+        print(f"     Verified: name={actual_name} (expected={updated_name}), clan_tag={actual_clan_tag} (expected={updated_clan_tag}), slug={actual_slug} (expected={updated_slug})")
         if actual_name != updated_name:
             print(f"     [FAIL] name mismatch: got '{actual_name}' expected '{updated_name}'")
             failed += 1
@@ -274,13 +289,20 @@ def cmd_full_cycle(args, headers: dict, token: str):
         else:
             passed += 1
             print(f"     [OK] name verified")
-        if actual_color != updated_color:
-            print(f"     [FAIL] color mismatch: got '{actual_color}' expected '{updated_color}'")
+        if actual_clan_tag != updated_clan_tag:
+            print(f"     [FAIL] clan_tag mismatch: got '{actual_clan_tag}' expected '{updated_clan_tag}'")
             failed += 1
             passed -= 1
         else:
             passed += 1
-            print(f"     [OK] color verified")
+            print(f"     [OK] clan_tag verified")
+        if actual_slug != updated_slug:
+            print(f"     [FAIL] slug mismatch: got '{actual_slug}' expected '{updated_slug}'")
+            failed += 1
+            passed -= 1
+        else:
+            passed += 1
+            print(f"     [OK] slug verified")
 
     print()
     print("[CRUD Cycle] Delete")
@@ -344,7 +366,9 @@ def main():
     # Create team
     create_p = sub.add_parser("create", help="POST /teams")
     create_p.add_argument("--name", required=True, help="Team name")
-    create_p.add_argument("--color", default="red", choices=["red", "blue"], help="Team color (default: red)")
+    create_p.add_argument("--slug", help="Team slug (default: name with spaces replaced by dashes)")
+    create_p.add_argument("--alt-name", help="Alternative team name (default: name + ' Alt')")
+    create_p.add_argument("--clan-tag", help="Clan tag (default: first 3 chars of name, uppercase)")
 
     # Get team by ID
     get_p = sub.add_parser("get", help="GET /teams/{id}")
@@ -354,7 +378,9 @@ def main():
     update_p = sub.add_parser("update", help="PUT /teams/{id}")
     update_p.add_argument("id", help="Team ID")
     update_p.add_argument("--name", help="New team name")
-    update_p.add_argument("--color", choices=["red", "blue"], help="New team color")
+    update_p.add_argument("--clan-tag", help="New clan tag")
+    update_p.add_argument("--slug", help="New slug")
+    update_p.add_argument("--alt-name", help="New alt name")
 
     # Delete team
     del_p = sub.add_parser("delete", help="DELETE /teams/{id}")
@@ -363,7 +389,7 @@ def main():
     # Full cycle
     cycle_p = sub.add_parser("full-cycle", help="Full CRUD cycle")
     cycle_p.add_argument("--name", default="Cycle-Team", help="Team name for cycle")
-    cycle_p.add_argument("--color", default="red", choices=["red", "blue"], help="Initial team color")
+    cycle_p.add_argument("--clan_tag", default="CYC", help="Clan tag for cycle")
 
     args = parser.parse_args()
 

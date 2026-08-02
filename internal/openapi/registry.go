@@ -221,5 +221,55 @@ func buildSchemas(routes []Route) map[string]interface{} {
 		},
 	}
 
+	// Team schemas
+	schemas["Team"] = map[string]interface{}{
+		"type": "object",
+		"properties": map[string]interface{}{
+			"id":       map[string]interface{}{"type": "integer", "format": "int64"},
+			"slug":     map[string]interface{}{"type": "string", "pattern": "^[a-z0-9-]+$", "minLength": 2, "maxLength": 64},
+			"name":     map[string]interface{}{"type": "string"},
+			"alt_name": map[string]interface{}{"type": "string"},
+			"clan_tag": map[string]interface{}{"type": "string"},
+			"created_at": map[string]interface{}{"type": "string", "format": "date-time"},
+			"updated_at": map[string]interface{}{"type": "string", "format": "date-time"},
+		},
+		"required": []interface{}{"id", "slug", "name", "alt_name", "clan_tag", "created_at", "updated_at"},
+	}
+	schemas["TeamListEnvelope"] = map[string]interface{}{
+		"type": "object",
+		"properties": map[string]interface{}{
+			"teams": map[string]interface{}{
+				"type":  "array",
+				"items": map[string]interface{}{"$ref": "#/components/schemas/Team"},
+			},
+		},
+	}
+	schemas["CreateTeamRequest"] = map[string]interface{}{
+		"type": "object",
+		"properties": map[string]interface{}{
+			"slug":     map[string]interface{}{"type": "string"},
+			"name":     map[string]interface{}{"type": "string"},
+			"alt_name": map[string]interface{}{"type": "string"},
+			"clan_tag": map[string]interface{}{"type": "string"},
+		},
+		"required": []interface{}{"slug", "name", "alt_name", "clan_tag"},
+	}
+	schemas["UpdateTeamRequest"] = map[string]interface{}{
+		"type": "object",
+		"properties": map[string]interface{}{
+			"slug":     map[string]interface{}{"type": "string"},
+			"name":     map[string]interface{}{"type": "string"},
+			"alt_name": map[string]interface{}{"type": "string"},
+			"clan_tag": map[string]interface{}{"type": "string"},
+		},
+	}
+	schemas["ErrorResponse"] = map[string]interface{}{
+		"type": "object",
+		"properties": map[string]interface{}{
+			"error": map[string]interface{}{"type": "string"},
+		},
+		"required": []interface{}{"error"},
+	}
+
 	return schemas
 }

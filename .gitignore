@@ -5,3 +5,4 @@ vendor/
 *.out
 /judge
 .DS_Store
+__pycache__/*

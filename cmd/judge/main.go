@@ -57,10 +57,12 @@ func NewRouter() http.Handler {
 	}
 
 	var repo repository.Repository
+	var teamRepo repository.TeamRepository
 	var pub *rabbitmq.Publisher
 
 	if db != nil {
 		repo = repository.NewShananiganRepo(db)
+		teamRepo = repository.NewTeamRepo(db)
 
 		rabbitMQURL := os.Getenv("RABBITMQ_URL")
 		if rabbitMQURL != "" {
@@ -84,7 +86,32 @@ func NewRouter() http.Handler {
 	metrics := handlers.NewCounterMetrics(shenaniganActivationsTotal, shenaniganCreationTotal, shenaniganPublishFailuresTotal)
 	shenaniganHandler := handlers.NewShenaniganHandler(repo, pub, metrics)
 	handlers.RegisterRoutes(r, shenaniganHandler)
+
+	// Team routes
+	var teamHandler *handlers.TeamHandler
+	if teamRepo != nil {
+		teamHandler = handlers.NewTeamHandler(teamRepo)
+	}
+
+	// Team routes — READS PUBLIC, MANIPULATIONS AUTHENTICATED
+	// Public (no auth)
+	if teamHandler != nil {
+		r.Get("/teams", teamHandler.HandleList)
+		r.Get("/teams/{id}", teamHandler.HandleGet)
+
+		// Authenticated (judge scope)
+		r.Group(func(r chi.Router) {
+			r.Method("POST", "/teams", handlers.AuthMiddleware(http.HandlerFunc(teamHandler.HandleCreate), "judge"))
+			r.Method("PUT", "/teams/{id}", handlers.AuthMiddleware(http.HandlerFunc(teamHandler.HandleUpdate), "judge"))
+			r.Method("DELETE", "/teams/{id}", handlers.AuthMiddleware(http.HandlerFunc(teamHandler.HandleDelete), "judge"))
+		})
+	}
+
 	handlers.RegisterOpenAPI(reg)
+
+	if teamHandler != nil {
+		teamHandler.RegisterOpenAPI(reg)
+	}
 
 	// Wrap router so SchemaHandler is available on every call.
 	// This serves /openapi.json and registers the route in the spec.
@@ -110,6 +137,36 @@ func openDB() (*sql.DB, error) {
 	// Ensure soft-delete column exists (idempotent migration).
 	if _, err := db.Exec("ALTER TABLE shenanigans ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP"); err != nil {
 		return nil, fmt.Errorf("migration failed: %w", err)
+	}
+
+	// Create teams table (idempotent).
+	const teamsTableSQL = `
+	CREATE TABLE IF NOT EXISTS team (
+		id          SERIAL PRIMARY KEY,
+		slug        TEXT NOT NULL UNIQUE,
+		name        TEXT NOT NULL,
+		alt_name    TEXT NOT NULL UNIQUE,
+		clan_tag    TEXT NOT NULL UNIQUE,
+		created_at  TEXT NOT NULL DEFAULT NOW(),
+		updated_at  TEXT NOT NULL DEFAULT NOW(),
+		CONSTRAINT chk_team_slug_format CHECK (slug ~ '^[a-z0-9-]+$' AND length(slug) BETWEEN 2 AND 64)
+	);
+
+	CREATE TRIGGER IF NOT EXISTS trg_team_updated_at
+		BEFORE UPDATE ON team
+		FOR EACH ROW
+		EXECUTE FUNCTION set_updated_at();
+
+	CREATE OR REPLACE FUNCTION set_updated_at()
+	RETURNS TRIGGER AS $$
+	BEGIN
+		NEW.updated_at := NOW();
+		RETURN NEW;
+	END;
+	$$ LANGUAGE plpgsql;
+	`
+	if _, err := db.Exec(teamsTableSQL); err != nil {
+		return nil, fmt.Errorf("team migration failed: %w", err)
 	}
 
 	return db, nil

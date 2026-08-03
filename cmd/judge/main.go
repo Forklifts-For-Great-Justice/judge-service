@@ -113,6 +113,26 @@ func NewRouter() http.Handler {
 		teamHandler.RegisterOpenAPI(reg)
 	}
 
+	// Challenge routes — READS PUBLIC, MANIPULATIONS AUTHENTICATED
+	var challengeHandler *handlers.ChallengeHandler
+	if db != nil {
+		challengeRepo := repository.NewChallengeRepo(db)
+		challengeHandler = handlers.NewChallengeHandler(challengeRepo)
+	}
+
+	if challengeHandler != nil {
+		r.Get("/challenges", challengeHandler.HandleList)
+		r.Get("/challenges/{id}", challengeHandler.HandleGet)
+
+		r.Group(func(r chi.Router) {
+			r.Method("POST", "/challenges", handlers.AuthMiddleware(http.HandlerFunc(challengeHandler.HandleCreate), "judge"))
+			r.Method("PUT", "/challenges/{id}", handlers.AuthMiddleware(http.HandlerFunc(challengeHandler.HandleUpdate), "judge"))
+			r.Method("DELETE", "/challenges/{id}", handlers.AuthMiddleware(http.HandlerFunc(challengeHandler.HandleDelete), "judge"))
+		})
+
+		challengeHandler.RegisterOpenAPI(reg)
+	}
+
 	// Wrap router so SchemaHandler is available on every call.
 	// This serves /openapi.json and registers the route in the spec.
 	return openapi.SchemaHandlerMiddleware(reg, r)
@@ -171,6 +191,43 @@ CREATE TABLE IF NOT EXISTS team (
 	`
 	if _, err := db.Exec(teamsTableSQL); err != nil {
 		return nil, fmt.Errorf("team migration failed: %w", err)
+	}
+
+	// Create challenges table (idempotent).
+	const challengesTableSQL = `
+CREATE TABLE IF NOT EXISTS challenge (
+	id         SERIAL PRIMARY KEY,
+	name       TEXT NOT NULL UNIQUE,
+	description TEXT NOT NULL,
+	challenge_type TEXT,
+	location    TEXT,
+	points     INTEGER NOT NULL DEFAULT 50,
+	disabled   BOOLEAN NOT NULL DEFAULT FALSE,
+	flag       TEXT NOT NULL,
+	created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+	updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+	CONSTRAINT chk_challenge_points CHECK (points > 0)
+);
+
+ALTER TABLE challenge ALTER COLUMN created_at TYPE TIMESTAMP USING created_at::TIMESTAMP;
+ALTER TABLE challenge ALTER COLUMN updated_at TYPE TIMESTAMP USING updated_at::TIMESTAMP;
+
+CREATE OR REPLACE FUNCTION set_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+	NEW.updated_at := NOW();
+	RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_challenge_updated_at ON challenge;
+CREATE TRIGGER trg_challenge_updated_at
+	BEFORE UPDATE ON challenge
+	FOR EACH ROW
+	EXECUTE FUNCTION set_updated_at();
+`
+	if _, err := db.Exec(challengesTableSQL); err != nil {
+		return nil, fmt.Errorf("challenge migration failed: %w", err)
 	}
 
 	return db, nil

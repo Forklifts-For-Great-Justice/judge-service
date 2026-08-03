@@ -30,13 +30,13 @@ The service does **not** implement its own auth. Every request comes through the
 
 ```
 judge.hackfortress.net
-├── /health              → no auth; container orchestration
-├── /metrics             → no auth; Prometheus
-├── /openapi.json        → no auth; OpenAPI 3.0.0 spec
-├── /shenanigans         → CRUD + activate
-├── /challenges          → CRUD
-├── /teams               → CRUD
-└── /rounds              → CRUD
+├── /health              → no auth ✅
+├── /metrics             → no auth ✅
+├── /openapi.json        → no auth ✅
+├── /shenanigans         → CRUD + activate ✅
+├── /challenges          → CRUD  ⬜ (M5)
+├── /teams               → CRUD  ✅
+└── /rounds              → CRUD  ⬜ (M6)
 ```
 
 ## Endpoints
@@ -247,27 +247,31 @@ JudgeService/
 │   ├── config/
 │   │   └── config.go        # env vars
 │   ├── handlers/
-│   │   ├── health.go        # /health
-│   │   ├── shenanigans.go   # /shenanigans/*
-│   │   ├── challenges.go    # /challenges/*
-│   │   ├── teams.go         # /teams/*
-│   │   └── rounds.go        # /rounds/*
+│   │   ├── health.go        # /health                        ✅
+│   │   ├── shenanigans.go   # /shenanigans/*                 ✅
+│   │   ├── teams.go         # /teams/*                       ✅
+│   │   ├── challenges.go    # /challenges/*                  ⬜ (Milestone 5)
+│   │   └── rounds.go        # /rounds/*                      ⬜ (Milestone 6)
 │   ├── models/              # entity structs
 │   ├── openapi/
-│   │   ├── registry.go      # Route registry, Spec() → map
-│   │   └── schema.go        # SchemaHandler → serves spec at /openapi.json
+│   │   ├── registry.go      # Route registry, Spec() → map   ✅
+│   │   └── schema.go        # SchemaHandler → /openapi.json  ✅
 │   ├── repository/
-│   │   ├── shenanigan_repo.go
-│   │   ├── challenge_repo.go
-│   │   ├── team_repo.go
-│   │   └── round_repo.go
+│   │   ├── shenanigan_repo.go # ✅                           ✅
+│   │   ├── team_repo.go       # ✅                           ✅
+│   │   ├── challenge_repo.go  # ⬜ (Milestone 5)
+│   │   └── round_repo.go      # ⬜ (Milestone 6)
 │   └── rabbitmq/
-│       └── publisher.go     # RabbitMQ publisher (msgpack)
+│       └── publisher.go     # RabbitMQ publisher (msgpack)   ✅ (M4)
 ├── openapi/
-│   └── schema.json          # static schema file (generated from registry)
+│   └── schema.json          # static schema (generated)      ✅
+├── scripts/
+│   └── test_*.py            # external integration tests     ✅
 ├── go.mod
 └── README.md
 ```
+
+Key: ✅ = implemented, ⬜ = planned (milestone in parentheses)
 
 ## Code Patterns
 
@@ -310,9 +314,23 @@ Standard HTTP codes:
 | `404` | resource not found |
 | `500` | internal server error |
 
+### RabbitMQ Publisher
+
+`internal/rabbitmq/publisher.go` implements an AMQP publisher using `streadway/amqp`. It connects to a RabbitMQ server using `RABBITMQ_URL` and publishes msgpack-encoded messages to a topic exchange (`RABBITMQ_EXCHANGE`).
+
+- Connection is auto-reconnecting on failure.
+- Publisher is created at startup; if RabbitMQ is unavailable, the service starts with a no-op publisher (returns `published: false` on activate).
+- Message encoding: msgpack with fields `purchase_id`, `shenanigan_id`, `rcon_payload`, `metadata`.
+- Routing key: `shenanigans.shenanigan.judge`.
+
+```go
+publisher := rabbitmq.NewPublisher(config.RabbitMQURL, config.RabbitMQExchange)
+// On activate: publisher.Publish(ctx, routingKey, msgpackPayload)
+```
+
 ## Milestones
 
-### Milestone 1 — Build & Verify
+### Milestone 1 — Build & Verify ✅ **Complete**
 
 A minimal Go application that proves the project compiles, runs, and is pushed to GitHub in the `Forklifts For Great Justice` org.
 
@@ -336,6 +354,128 @@ go build ./cmd/judge/
 **Goal:** Code compiles, binary runs, repository exists on GH — nothing more. No DB, no MQ, no JWT. Progress from here only after Milestone 1 is on GitHub.
 
 ---
+
+### Milestone 2 — Shenanigans CRUD ✅ **Complete**
+
+Full CRUD for the shenanigan catalogue plus the `/activate` endpoint. Includes OpenAPI spec registration, auth middleware, SQLite in-memory repo tests, and DB migration.
+
+**Deliverables:**
+- `internal/repository/shenanigan_repo.go` — PostgreSQL persistence (pgx pool)
+- `internal/repository/shenanigan_repo_test.go` — SQLite in-memory tests
+- `internal/handlers/shenanigans.go` — CRUD + activate handlers with auth middleware
+- `internal/handlers/shenanigans_test.go` — handler tests via `httptest`
+- `internal/openapi` — route registration for shenanigan endpoints
+- `openapi/schema.json` — static OpenAPI snapshot
+- DB migration: table creation, `deleted_at` soft-delete on startup
+- `POST /shenanigans/{id}/activate` — publishes to RabbitMQ (stubbed in tests)
+
+**Verification:**
+```bash
+go build ./cmd/judge/
+go test ./...
+./judge    # listens on :8086
+# curl http://localhost:8086/shenanigans   → 200 OK (empty list)
+# curl -X POST http://localhost:8086/shenanigans → 201 Created
+```
+
+**Goal:** Full shenanigan CRUD pipeline — DB, handlers, repo, tests, OpenAPI — all wired and tested.
+
+---
+
+### Milestone 3 — Teams CRUD ✅ **Complete**
+
+Full CRUD for competition teams.
+
+**Deliverables:**
+- `internal/repository/team_repo.go` — PostgreSQL persistence
+- `internal/repository/team_repo_test.go` — SQLite in-memory tests
+- `internal/handlers/teams.go` — CRUD handlers
+- `internal/handlers/teams_test.go` — handler tests
+- `internal/models/` — Team struct
+
+**Verification:**
+```bash
+git push origin main          # triggers CI/CD
+# → CI builds Docker image → GHCR
+# → Restart judge container on Portainer
+# → curl http://localhost:8086/teams → 200 OK
+```
+
+**Goal:** Team management is fully functional via API.
+
+---
+
+### Milestone 4 — RabbitMQ Publisher ✅ **Complete and Verified**
+
+RabbitMQ publisher for shenanigan activation messages.
+
+**Deliverables:**
+- `internal/rabbitmq/publisher.go` — AMQP publisher using `streadway/amqp`, msgpack encoding
+- Publishes to topic exchange `hackfortress` with routing key `shenanigans.shenanigan.judge`
+- `POST /shenanigans/{id}/activate` integration: resolves catalogue entry → publishes msgpack payload → returns `purchase_id`
+- Connection lifecycle management (auto-reconnect, graceful shutdown)
+
+**Verification:**
+```
+Verified on production — RabbitMQ publisher confirmed complete and working.
+```
+
+**Goal:** Shenanigan activation publishes real messages to RabbitMQ, not a stub. Consumers receive msgpack-encoded messages with `purchase_id`, `shenanigan_id`, `rcon_payload`, and optional `metadata`.
+
+---
+
+### Milestone 5 — Challenges CRUD ⬜ **Next**
+
+Full CRUD for challenges (puzzles) including unlock, category, and quickdraw fields.
+
+**Deliverables:**
+- `internal/models/` — Challenge struct
+- `internal/repository/challenge_repo.go` — PostgreSQL persistence
+- `internal/handlers/challenges.go` — CRUD handlers
+- `internal/openapi` — route registration for challenge endpoints
+- Updated `openapi/schema.json`
+
+**Expected endpoints:**
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET` | `/challenges` | `judge` | List all challenges |
+| `POST` | `/challenges` | `judge` | Create a challenge |
+| `GET` | `/challenges/{id}` | `judge` | Get a single challenge |
+| `PUT` | `/challenges/{id}` | `judge` | Update a challenge |
+| `DELETE` | `/challenges/{id}` | `judge` | Delete a challenge |
+
+**Request shapes:**
+- Create/Update: `{ name?, description?, points?, unlock?, category?, quickdraw? }`
+- Model fields: `id`, `name`, `description`, `points`, `unlock`, `category`, `quickdraw`, `created_at`, `updated_at`, `deleted_at`
+
+**Goal:** Challenges/puzzles are manageable via API.
+
+---
+
+### Milestone 6 — Rounds CRUD + Lifecycle ⬜ **Pending**
+
+Full CRUD for rounds plus state transition endpoints (`ready`, `live`).
+
+**Deliverables:**
+- `internal/models/` — Round struct
+- `internal/repository/round_repo.go` — PostgreSQL persistence
+- `internal/handlers/rounds.go` — CRUD + ready/live handlers
+- `internal/openapi` — route registration for round endpoints
+- Updated `openapi/schema.json`
+- Game table integration: `live_round_id` management
+
+**Expected endpoints:**
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET` | `/rounds` | `judge` | List all rounds + game/automation state |
+| `POST` | `/rounds` | `judge` | Create a round |
+| `GET` | `/rounds/{id}` | `judge` | Get a single round |
+| `PUT` | `/rounds/{id}` | `judge` | Update a round |
+| `DELETE` | `/rounds/{id}` | `judge` | Delete a round |
+| `POST` | `/rounds/{id}/ready` | `judge` | Toggle ready state |
+| `POST` | `/rounds/{id}/live` | `judge` | Toggle live state (sets `live_round_id`) |
+
+**Goal:** Round lifecycle is fully managed — teams can be assigned, rounds set ready and toggled live.
 
 ## Scope
 

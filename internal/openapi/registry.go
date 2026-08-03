@@ -271,5 +271,63 @@ func buildSchemas(routes []Route) map[string]interface{} {
 		"required": []interface{}{"error"},
 	}
 
+	// Challenge schemas
+	schemas["Challenge"] = map[string]interface{}{
+		"type":        "object",
+		"description": "A challenge (puzzle) definition in the competition.",
+		"properties": map[string]interface{}{
+			"id":             map[string]interface{}{"type": "integer", "format": "int64"},
+			"name":           map[string]interface{}{"type": "string"},
+			"description":    map[string]interface{}{"type": "string"},
+			"challenge_type": map[string]interface{}{"type": "string"},
+			"location":       map[string]interface{}{"type": "string"},
+			"points":         map[string]interface{}{"type": "integer"},
+			"disabled":       map[string]interface{}{"type": "boolean"},
+			"flag":           map[string]interface{}{"type": "string"},
+			"created_at":     map[string]interface{}{"type": "string", "format": "date-time"},
+			"updated_at":     map[string]interface{}{"type": "string", "format": "date-time"},
+		},
+		"required": []interface{}{"id", "name", "description", "points", "flag", "created_at", "updated_at"},
+	}
+
+	schemas["ChallengeListEnvelope"] = map[string]interface{}{
+		"type": "object",
+		"properties": map[string]interface{}{
+			"challenges": map[string]interface{}{
+				"type":  "array",
+				"items": map[string]interface{}{"$ref": "#/components/schemas/Challenge"},
+			},
+		},
+	}
+
+	schemas["CreateChallengeRequest"] = map[string]interface{}{
+		"type":        "object",
+		"description": "Payload for creating a new challenge.",
+		"properties": map[string]interface{}{
+			"name":             map[string]interface{}{"type": "string"},
+			"description":      map[string]interface{}{"type": "string"},
+			"challenge_type":   map[string]interface{}{"type": "string"},
+			"location":         map[string]interface{}{"type": "string"},
+			"points":           map[string]interface{}{"type": "integer"},
+			"disabled":         map[string]interface{}{"type": "boolean"},
+			"flag":             map[string]interface{}{"type": "string"},
+		},
+		"required": []interface{}{"name", "description", "points", "flag"},
+	}
+
+	schemas["UpdateChallengeRequest"] = map[string]interface{}{
+		"type":        "object",
+		"description": "Payload for updating a challenge. Any field is optional.",
+		"properties": map[string]interface{}{
+			"name":             map[string]interface{}{"type": "string"},
+			"description":      map[string]interface{}{"type": "string"},
+			"challenge_type":   map[string]interface{}{"type": "string"},
+			"location":         map[string]interface{}{"type": "string"},
+			"points":           map[string]interface{}{"type": "integer"},
+			"disabled":         map[string]interface{}{"type": "boolean"},
+			"flag":             map[string]interface{}{"type": "string"},
+		},
+	}
+
 	return schemas
 }

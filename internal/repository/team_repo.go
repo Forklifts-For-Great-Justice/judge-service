@@ -28,6 +28,12 @@ func isDuplicatePostgres(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "duplicate")
 }
 
+// IsDuplicatePostgres checks whether an error is a PostgreSQL duplicate key violation.
+// Exported for use by other repository files (challenge_repo.go).
+func IsDuplicatePostgres(err error) bool {
+	return isDuplicatePostgres(err)
+}
+
 // TeamRepo handles all team persistence operations.
 type TeamRepo struct {
 	db *sql.DB

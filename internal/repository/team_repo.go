@@ -126,7 +126,6 @@ func (r *TeamRepo) Update(ctx context.Context, id int64, updates map[string]any)
 		return nil
 	}
 
-	idx++ // for the WHERE clause parameter
 	args = append(args, id)
 
 	query := fmt.Sprintf("UPDATE team SET %s WHERE id=$%d",

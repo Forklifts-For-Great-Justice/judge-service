@@ -1,6 +1,6 @@
 services:
   judge:
-    image: ghcr.io/forklifts-for-great-justice/judge-service:main
+    image: ghcr.io/forklifts-for-great-justice/judge-service:v0.0.1
     container_name: judge
     restart: unless-stopped
     ports:

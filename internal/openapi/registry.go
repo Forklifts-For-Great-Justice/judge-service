@@ -329,5 +329,79 @@ func buildSchemas(routes []Route) map[string]interface{} {
 		},
 	}
 
+	// Round schemas
+	schemas["Round"] = map[string]interface{}{
+		"type":        "object",
+		"description": "A round (match) in the competition.",
+		"properties": map[string]interface{}{
+			"id":                 map[string]interface{}{"type": "integer", "format": "int64"},
+			"team_a_id":          map[string]interface{}{"type": "integer", "format": "int64"},
+			"team_b_id":          map[string]interface{}{"type": "integer", "format": "int64"},
+			"round_name":         map[string]interface{}{"type": "string"},
+			"team_a_points":      map[string]interface{}{"type": "integer"},
+			"team_b_points":      map[string]interface{}{"type": "integer"},
+			"team_a_hack_points": map[string]interface{}{"type": "integer"},
+			"team_b_hack_points": map[string]interface{}{"type": "integer"},
+			"team_a_hackcoins":   map[string]interface{}{"type": "integer"},
+			"team_b_hackcoins":   map[string]interface{}{"type": "integer"},
+			"status":             map[string]interface{}{"type": "string", "enum": []interface{}{"scheduled", "in_progress", "completed", "cancelled"}},
+			"ready":              map[string]interface{}{"type": "boolean"},
+			"live":               map[string]interface{}{"type": "boolean"},
+			"disabled":           map[string]interface{}{"type": "boolean"},
+			"live_at":            map[string]interface{}{"type": "string", "format": "date-time", "nullable": true},
+			"ready_at":           map[string]interface{}{"type": "string", "format": "date-time", "nullable": true},
+			"created_at":         map[string]interface{}{"type": "string", "format": "date-time"},
+			"updated_at":         map[string]interface{}{"type": "string", "format": "date-time"},
+		},
+		"required": []interface{}{"id", "round_name", "team_a_id", "team_b_id", "status", "created_at"},
+	}
+
+	schemas["RoundListEnvelope"] = map[string]interface{}{
+		"type": "object",
+		"properties": map[string]interface{}{
+			"rounds": map[string]interface{}{
+				"type":  "array",
+				"items": map[string]interface{}{"$ref": "#/components/schemas/Round"},
+			},
+			"game_state":       map[string]interface{}{"type": "object"},
+			"automation_state": map[string]interface{}{"type": "object"},
+		},
+	}
+
+	schemas["RoundCreateRequest"] = map[string]interface{}{
+		"type": "object",
+		"properties": map[string]interface{}{
+			"round_name": map[string]interface{}{"type": "string"},
+			"team_a_id":  map[string]interface{}{"type": "integer", "format": "int64"},
+			"team_b_id":  map[string]interface{}{"type": "integer", "format": "int64"},
+		},
+		"required": []interface{}{"round_name", "team_a_id", "team_b_id"},
+	}
+
+	schemas["RoundUpdateRequest"] = map[string]interface{}{
+		"type": "object",
+		"properties": map[string]interface{}{
+			"round_name": map[string]interface{}{"type": "string"},
+			"team_a_id":  map[string]interface{}{"type": "integer", "format": "int64"},
+			"team_b_id":  map[string]interface{}{"type": "integer", "format": "int64"},
+		},
+	}
+
+	schemas["ReadyToggleResponse"] = map[string]interface{}{
+		"type": "object",
+		"properties": map[string]interface{}{
+			"ready":  map[string]interface{}{"type": "boolean"},
+			"status": map[string]interface{}{"type": "string"},
+		},
+	}
+
+	schemas["LiveToggleResponse"] = map[string]interface{}{
+		"type": "object",
+		"properties": map[string]interface{}{
+			"live":   map[string]interface{}{"type": "boolean"},
+			"status": map[string]interface{}{"type": "string"},
+		},
+	}
+
 	return schemas
 }

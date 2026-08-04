@@ -133,6 +133,24 @@ func NewRouter() http.Handler {
 		challengeHandler.RegisterOpenAPI(reg)
 	}
 
+	// Round routes — ALL AUTHENTICATED
+	var roundHandler *handlers.RoundHandler
+	if db != nil {
+		roundRepo := repository.NewRoundRepo(db)
+		roundHandler = handlers.NewRoundHandler(roundRepo)
+
+		r.Group(func(r chi.Router) {
+			r.Method("GET", "/rounds", handlers.AuthMiddleware(http.HandlerFunc(roundHandler.HandleList), "judge"))
+			r.Method("POST", "/rounds", handlers.AuthMiddleware(http.HandlerFunc(roundHandler.HandleCreate), "judge"))
+			r.Method("GET", "/rounds/{id}", handlers.AuthMiddleware(http.HandlerFunc(roundHandler.HandleGet), "judge"))
+			r.Method("PUT", "/rounds/{id}", handlers.AuthMiddleware(http.HandlerFunc(roundHandler.HandleUpdate), "judge"))
+			r.Method("DELETE", "/rounds/{id}", handlers.AuthMiddleware(http.HandlerFunc(roundHandler.HandleDelete), "judge"))
+			r.Method("POST", "/rounds/{id}/ready", handlers.AuthMiddleware(http.HandlerFunc(roundHandler.HandleToggleReady), "judge"))
+			r.Method("POST", "/rounds/{id}/live", handlers.AuthMiddleware(http.HandlerFunc(roundHandler.HandleToggleLive), "judge"))
+		})
+		roundHandler.RegisterOpenAPI(reg)
+	}
+
 	// Wrap router so SchemaHandler is available on every call.
 	// This serves /openapi.json and registers the route in the spec.
 	return openapi.SchemaHandlerMiddleware(reg, r)
@@ -228,6 +246,17 @@ CREATE TRIGGER trg_challenge_updated_at
 `
 	if _, err := db.Exec(challengesTableSQL); err != nil {
 		return nil, fmt.Errorf("challenge migration failed: %w", err)
+	}
+
+	// Add round management columns (idempotent, matches table already exists).
+	if _, err := db.Exec(`
+		ALTER TABLE matches ADD COLUMN IF NOT EXISTS disabled BOOLEAN NOT NULL DEFAULT FALSE;
+		ALTER TABLE matches ADD COLUMN IF NOT EXISTS ready BOOLEAN NOT NULL DEFAULT FALSE;
+		ALTER TABLE matches ADD COLUMN IF NOT EXISTS live BOOLEAN NOT NULL DEFAULT FALSE;
+		ALTER TABLE matches ADD COLUMN IF NOT EXISTS ready_at TIMESTAMPTZ;
+		ALTER TABLE matches ADD COLUMN IF NOT EXISTS live_at TIMESTAMPTZ;
+	`); err != nil {
+		return nil, fmt.Errorf("round migration failed: %w", err)
 	}
 
 	return db, nil

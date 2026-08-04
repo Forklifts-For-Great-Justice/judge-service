@@ -179,7 +179,15 @@ func openDB() (*sql.DB, error) {
 
 	// Create teams table (idempotent).
 	const teamsTableSQL = `
-CREATE TABLE IF NOT EXISTS team (
+	CREATE OR REPLACE FUNCTION set_updated_at()
+	RETURNS TRIGGER AS $$
+	BEGIN
+		NEW.updated_at := NOW();
+		RETURN NEW;
+	END;
+	$$ LANGUAGE plpgsql;
+
+	CREATE TABLE IF NOT EXISTS team (
 		id          SERIAL PRIMARY KEY,
 		slug        TEXT NOT NULL UNIQUE,
 		name        TEXT NOT NULL,
@@ -198,14 +206,6 @@ CREATE TABLE IF NOT EXISTS team (
 		BEFORE UPDATE ON team
 		FOR EACH ROW
 		EXECUTE FUNCTION set_updated_at();
-
-	CREATE OR REPLACE FUNCTION set_updated_at()
-	RETURNS TRIGGER AS $$
-	BEGIN
-		NEW.updated_at := NOW();
-		RETURN NEW;
-	END;
-	$$ LANGUAGE plpgsql;
 	`
 	if _, err := db.Exec(teamsTableSQL); err != nil {
 		return nil, fmt.Errorf("team migration failed: %w", err)
@@ -229,14 +229,6 @@ CREATE TABLE IF NOT EXISTS challenge (
 
 ALTER TABLE challenge ALTER COLUMN created_at TYPE TIMESTAMP USING created_at::TIMESTAMP;
 ALTER TABLE challenge ALTER COLUMN updated_at TYPE TIMESTAMP USING updated_at::TIMESTAMP;
-
-CREATE OR REPLACE FUNCTION set_updated_at()
-RETURNS TRIGGER AS $$
-BEGIN
-	NEW.updated_at := NOW();
-	RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
 
 DROP TRIGGER IF EXISTS trg_challenge_updated_at ON challenge;
 CREATE TRIGGER trg_challenge_updated_at

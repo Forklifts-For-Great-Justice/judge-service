@@ -240,14 +240,44 @@ CREATE TRIGGER trg_challenge_updated_at
 		return nil, fmt.Errorf("challenge migration failed: %w", err)
 	}
 
-	// Add round management columns (idempotent, matches table already exists).
-	if _, err := db.Exec(`
-		ALTER TABLE matches ADD COLUMN IF NOT EXISTS disabled BOOLEAN NOT NULL DEFAULT FALSE;
-		ALTER TABLE matches ADD COLUMN IF NOT EXISTS ready BOOLEAN NOT NULL DEFAULT FALSE;
-		ALTER TABLE matches ADD COLUMN IF NOT EXISTS live BOOLEAN NOT NULL DEFAULT FALSE;
-		ALTER TABLE matches ADD COLUMN IF NOT EXISTS ready_at TIMESTAMPTZ;
-		ALTER TABLE matches ADD COLUMN IF NOT EXISTS live_at TIMESTAMPTZ;
-	`); err != nil {
+	// Create matches table if not exists and ensure round management columns exist (idempotent).
+	const matchesTableSQL = `
+	CREATE TABLE IF NOT EXISTS matches (
+		id                  SERIAL PRIMARY KEY,
+		team_a_id           INTEGER NOT NULL REFERENCES team(id),
+		team_b_id           INTEGER NOT NULL REFERENCES team(id),
+		round_name          TEXT NOT NULL,
+		team_a_points       INTEGER NOT NULL DEFAULT 0,
+		team_b_points       INTEGER NOT NULL DEFAULT 0,
+		team_a_hack_points  INTEGER NOT NULL DEFAULT 0,
+		team_b_hack_points  INTEGER NOT NULL DEFAULT 0,
+		team_a_hackcoins    INTEGER NOT NULL DEFAULT 0,
+		team_b_hackcoins    INTEGER NOT NULL DEFAULT 0,
+		status              TEXT NOT NULL DEFAULT 'scheduled'
+			CONSTRAINT chk_matches_status CHECK (status IN ('scheduled', 'in_progress', 'completed', 'cancelled')),
+		disabled            BOOLEAN NOT NULL DEFAULT FALSE,
+		ready               BOOLEAN NOT NULL DEFAULT FALSE,
+		live                BOOLEAN NOT NULL DEFAULT FALSE,
+		ready_at            TIMESTAMPTZ,
+		live_at             TIMESTAMPTZ,
+		created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+		updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+		CONSTRAINT chk_matches_different_teams CHECK (team_a_id <> team_b_id)
+	);
+
+	ALTER TABLE matches ADD COLUMN IF NOT EXISTS disabled BOOLEAN NOT NULL DEFAULT FALSE;
+	ALTER TABLE matches ADD COLUMN IF NOT EXISTS ready BOOLEAN NOT NULL DEFAULT FALSE;
+	ALTER TABLE matches ADD COLUMN IF NOT EXISTS live BOOLEAN NOT NULL DEFAULT FALSE;
+	ALTER TABLE matches ADD COLUMN IF NOT EXISTS ready_at TIMESTAMPTZ;
+	ALTER TABLE matches ADD COLUMN IF NOT EXISTS live_at TIMESTAMPTZ;
+
+	DROP TRIGGER IF EXISTS trg_matches_updated_at ON matches;
+	CREATE TRIGGER trg_matches_updated_at
+		BEFORE UPDATE ON matches
+		FOR EACH ROW
+		EXECUTE FUNCTION set_updated_at();
+	`
+	if _, err := db.Exec(matchesTableSQL); err != nil {
 		return nil, fmt.Errorf("round migration failed: %w", err)
 	}
 

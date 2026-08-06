@@ -19,6 +19,8 @@ type RoundRepository interface {
 	Disable(ctx context.Context, id int64) error
 	ToggleReady(ctx context.Context, id int64) error
 	SetLive(ctx context.Context, id int64) (string, error)
+	GetCurrentTeams(ctx context.Context) (*models.CurrentTeams, error)
+	SetCurrentTeams(ctx context.Context, teamAID, teamBID int64) (*models.CurrentTeams, error)
 }
 
 // RoundRepo implements RoundRepository via the matches table.
@@ -196,3 +198,141 @@ func (r *RoundRepo) SetLive(ctx context.Context, id int64) (string, error) {
 	}
 	return prevStatus, nil
 }
+
+// GetCurrentTeams returns team details for the currently active match.
+func (r *RoundRepo) GetCurrentTeams(ctx context.Context) (*models.CurrentTeams, error) {
+	if r == nil || r.db == nil {
+		return nil, fmt.Errorf("database connection is nil")
+	}
+
+	var matchID sql.NullInt64
+	var teamA, teamB models.Team
+
+	// 1. Query current_match joined with team
+	queryCurrent := `SELECT 
+		cm.match_id,
+		ta.id, ta.slug, ta.name, ta.alt_name, ta.clan_tag,
+		tb.id, tb.slug, tb.name, tb.alt_name, tb.clan_tag
+		FROM current_match cm
+		JOIN team ta ON cm.team_a_id = ta.id
+		JOIN team tb ON cm.team_b_id = tb.id
+		WHERE cm.is_current = TRUE LIMIT 1`
+
+	err := r.db.QueryRowContext(ctx, queryCurrent).Scan(
+		&matchID,
+		&teamA.ID, &teamA.Slug, &teamA.Name, &teamA.AltName, &teamA.ClanTag,
+		&teamB.ID, &teamB.Slug, &teamB.Name, &teamB.AltName, &teamB.ClanTag,
+	)
+	if err == nil {
+		res := &models.CurrentTeams{
+			TeamAID: teamA.ID,
+			TeamBID: teamB.ID,
+			TeamA:   &teamA,
+			TeamB:   &teamB,
+		}
+		if matchID.Valid {
+			res.MatchID = matchID.Int64
+		}
+		return res, nil
+	}
+
+	// 2. Fallback to live/in_progress match in matches table
+	queryMatches := `SELECT 
+		m.id,
+		ta.id, ta.slug, ta.name, ta.alt_name, ta.clan_tag,
+		tb.id, tb.slug, tb.name, tb.alt_name, tb.clan_tag
+		FROM matches m
+		JOIN team ta ON m.team_a_id = ta.id
+		JOIN team tb ON m.team_b_id = tb.id
+		WHERE m.disabled = false AND (m.live = true OR m.status = 'in_progress')
+		ORDER BY m.id DESC LIMIT 1`
+
+	err = r.db.QueryRowContext(ctx, queryMatches).Scan(
+		&matchID,
+		&teamA.ID, &teamA.Slug, &teamA.Name, &teamA.AltName, &teamA.ClanTag,
+		&teamB.ID, &teamB.Slug, &teamB.Name, &teamB.AltName, &teamB.ClanTag,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+
+	res := &models.CurrentTeams{
+		TeamAID: teamA.ID,
+		TeamBID: teamB.ID,
+		TeamA:   &teamA,
+		TeamB:   &teamB,
+	}
+	if matchID.Valid {
+		res.MatchID = matchID.Int64
+	}
+	return res, nil
+}
+
+// SetCurrentTeams updates/sets the active teams in current_match and matches.
+func (r *RoundRepo) SetCurrentTeams(ctx context.Context, teamAID, teamBID int64) (*models.CurrentTeams, error) {
+	if r == nil || r.db == nil {
+		return nil, fmt.Errorf("database connection is nil")
+	}
+	if teamAID <= 0 || teamBID <= 0 {
+		return nil, fmt.Errorf("team_a_id and team_b_id must be valid positive integers")
+	}
+	if teamAID == teamBID {
+		return nil, fmt.Errorf("team_a_id and team_b_id must be different")
+	}
+
+	// 1. Verify both team_a_id and team_b_id exist in team table
+	var teamA, teamB models.Team
+	queryTeam := `SELECT id, slug, name, alt_name, clan_tag FROM team WHERE id = $1`
+	if err := r.db.QueryRowContext(ctx, queryTeam, teamAID).Scan(&teamA.ID, &teamA.Slug, &teamA.Name, &teamA.AltName, &teamA.ClanTag); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("team_a_id %d does not exist in team table", teamAID)
+		}
+		return nil, fmt.Errorf("failed to fetch team_a: %w", err)
+	}
+
+	if err := r.db.QueryRowContext(ctx, queryTeam, teamBID).Scan(&teamB.ID, &teamB.Slug, &teamB.Name, &teamB.AltName, &teamB.ClanTag); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("team_b_id %d does not exist in team table", teamBID)
+		}
+		return nil, fmt.Errorf("failed to fetch team_b: %w", err)
+	}
+
+	// 2. Find or create match in matches table
+	var matchID int64
+	queryFindMatch := `SELECT id FROM matches WHERE team_a_id = $1 AND team_b_id = $2 AND disabled = false ORDER BY id DESC LIMIT 1`
+	err := r.db.QueryRowContext(ctx, queryFindMatch, teamAID, teamBID).Scan(&matchID)
+	if err != nil {
+		// Create match
+		queryInsertMatch := `INSERT INTO matches (team_a_id, team_b_id, round_name, status, live) VALUES ($1, $2, 'Current Match', 'in_progress', true) RETURNING id`
+		if err := r.db.QueryRowContext(ctx, queryInsertMatch, teamAID, teamBID).Scan(&matchID); err != nil {
+			res, errExec := r.db.ExecContext(ctx, `INSERT INTO matches (team_a_id, team_b_id, round_name, status, live) VALUES ($1, $2, 'Current Match', 'in_progress', true)`, teamAID, teamBID)
+			if errExec != nil {
+				return nil, fmt.Errorf("failed to create match: %w", errExec)
+			}
+			matchID, _ = res.LastInsertId()
+		}
+	} else {
+		// Set live=true on this match and live=false on others
+		_, _ = r.db.ExecContext(ctx, `UPDATE matches SET live = false WHERE id <> $1`, matchID)
+		_, _ = r.db.ExecContext(ctx, `UPDATE matches SET live = true, status = 'in_progress' WHERE id = $1`, matchID)
+	}
+
+	// 3. Clear existing current_match and insert current active row
+	_, _ = r.db.ExecContext(ctx, `DELETE FROM current_match`)
+	queryInsertCurrent := `INSERT INTO current_match (match_id, team_a_id, team_b_id, round_name, is_current) VALUES ($1, $2, $3, 'Current Match', true)`
+	if _, err := r.db.ExecContext(ctx, queryInsertCurrent, matchID, teamAID, teamBID); err != nil {
+		return nil, fmt.Errorf("failed to update current_match: %w", err)
+	}
+
+	return &models.CurrentTeams{
+		MatchID: matchID,
+		TeamAID: teamAID,
+		TeamBID: teamBID,
+		TeamA:   &teamA,
+		TeamB:   &teamB,
+	}, nil
+}
+

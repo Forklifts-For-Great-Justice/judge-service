@@ -230,11 +230,77 @@ func (h *RoundHandler) HandleToggleLive(w http.ResponseWriter, req *http.Request
 	_ = prevStatus
 }
 
+// HandleGetCurrentTeams — GET /rounds/current/teams & GET /rounds/current
+func (h *RoundHandler) HandleGetCurrentTeams(w http.ResponseWriter, req *http.Request) {
+	if isNilRoundRepo(h.repo) {
+		writeError(w, http.StatusServiceUnavailable, "database not available")
+		return
+	}
+
+	ct, err := h.repo.GetCurrentTeams(req.Context())
+	if err != nil {
+		if err == repository.ErrNotFound {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			json.NewEncoder(w).Encode(map[string]any{})
+			return
+		}
+		writeError(w, http.StatusInternalServerError, fmt.Sprintf("failed to get current teams: %v", err))
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(ct)
+}
+
+// HandleSetCurrentTeams — POST /rounds/current/teams & POST /rounds/current
+func (h *RoundHandler) HandleSetCurrentTeams(w http.ResponseWriter, req *http.Request) {
+	if isNilRoundRepo(h.repo) {
+		writeError(w, http.StatusServiceUnavailable, "database not available")
+		return
+	}
+
+	var body models.SetCurrentTeamsRequest
+	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	teamAID := body.GetTeamAID()
+	teamBID := body.GetTeamBID()
+
+	if teamAID == 0 || teamBID == 0 {
+		writeError(w, http.StatusBadRequest, "team_a_id and team_b_id are required")
+		return
+	}
+	if teamAID == teamBID {
+		writeError(w, http.StatusBadRequest, "team_a_id and team_b_id must be different")
+		return
+	}
+
+	ct, err := h.repo.SetCurrentTeams(req.Context(), teamAID, teamBID)
+	if err != nil {
+		if strings.Contains(err.Error(), "does not exist") {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeError(w, http.StatusInternalServerError, fmt.Sprintf("failed to set current teams: %v", err))
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(ct)
+}
+
 // RegisterOpenAPI registers all round routes with the OpenAPI registry.
 func (h *RoundHandler) RegisterOpenAPI(reg *openapi.Registry) {
 	reg.Register(
 		openapi.Route{Method: "GET", Path: "/rounds", OperationID: "listRounds", Description: "List all rounds.", Responses: []openapi.Response{{Code: 200, Body: "json"}, {Code: 503, Body: "json"}}},
 		openapi.Route{Method: "POST", Path: "/rounds", OperationID: "createRound", Description: "Create a new round.", RequestBody: "json", Responses: []openapi.Response{{Code: 201, Body: "json"}, {Code: 400, Body: "json"}, {Code: 503, Body: "json"}}},
+		openapi.Route{Method: "GET", Path: "/rounds/current/teams", OperationID: "getCurrentTeams", Description: "Get active teams in the current round.", Responses: []openapi.Response{{Code: 200, Body: "json"}, {Code: 503, Body: "json"}}},
+		openapi.Route{Method: "POST", Path: "/rounds/current/teams", OperationID: "setCurrentTeams", Description: "Set active teams in the current round.", RequestBody: "json", Responses: []openapi.Response{{Code: 200, Body: "json"}, {Code: 400, Body: "json"}, {Code: 503, Body: "json"}}},
 		openapi.Route{Method: "GET", Path: "/rounds/{id}", OperationID: "getRound", Description: "Get a round by ID.", Responses: []openapi.Response{{Code: 200, Body: "json"}, {Code: 404, Body: "json"}, {Code: 503, Body: "json"}}},
 		openapi.Route{Method: "PUT", Path: "/rounds/{id}", OperationID: "updateRound", Description: "Update a round.", RequestBody: "json", Responses: []openapi.Response{{Code: 200, Body: "json"}, {Code: 400, Body: "json"}, {Code: 404, Body: "json"}, {Code: 503, Body: "json"}}},
 		openapi.Route{Method: "DELETE", Path: "/rounds/{id}", OperationID: "deleteRound", Description: "Soft-delete a round.", Responses: []openapi.Response{{Code: 200, Body: "json"}, {Code: 404, Body: "json"}, {Code: 503, Body: "json"}}},
@@ -242,3 +308,4 @@ func (h *RoundHandler) RegisterOpenAPI(reg *openapi.Registry) {
 		openapi.Route{Method: "POST", Path: "/rounds/{id}/live", OperationID: "toggleRoundLive", Description: "Toggle live state.", Responses: []openapi.Response{{Code: 200, Body: "json"}, {Code: 404, Body: "json"}, {Code: 503, Body: "json"}}},
 	)
 }
+

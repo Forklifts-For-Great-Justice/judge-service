@@ -44,6 +44,14 @@ func setupRoundDB(t *testing.T) *sql.DB {
 	}
 
 	createTable := `
+	CREATE TABLE IF NOT EXISTS team (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		slug TEXT NOT NULL,
+		name TEXT NOT NULL,
+		alt_name TEXT NOT NULL,
+		clan_tag TEXT NOT NULL
+	);
+
 	CREATE TABLE IF NOT EXISTS matches (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		round_name TEXT NOT NULL,
@@ -63,6 +71,21 @@ func setupRoundDB(t *testing.T) *sql.DB {
 		live_at TIMESTAMP,
 		created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 		updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+	);
+
+	CREATE TABLE IF NOT EXISTS current_match (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		match_id INTEGER,
+		team_a_id INTEGER NOT NULL,
+		team_b_id INTEGER NOT NULL,
+		round_name TEXT NOT NULL DEFAULT '',
+		team_a_points INTEGER NOT NULL DEFAULT 0,
+		team_b_points INTEGER NOT NULL DEFAULT 0,
+		team_a_hack_points INTEGER NOT NULL DEFAULT 0,
+		team_b_hack_points INTEGER NOT NULL DEFAULT 0,
+		team_a_hackcoins INTEGER NOT NULL DEFAULT 0,
+		team_b_hackcoins INTEGER NOT NULL DEFAULT 0,
+		is_current BOOLEAN NOT NULL DEFAULT TRUE
 	);`
 
 	if _, err := db.Exec(createTable); err != nil {
@@ -343,3 +366,43 @@ func TestRoundSetLive(t *testing.T) {
 		t.Error("expected Live=false after set live off")
 	}
 }
+
+func TestSetAndGetCurrentTeams(t *testing.T) {
+	db := setupRoundDB(t)
+	repo := repository.NewRoundRepo(db)
+
+	_, err := db.Exec(`INSERT INTO team (id, slug, name, alt_name, clan_tag) VALUES 
+		(1, 'red', 'Red Team', 'Red Alt', 'RED'),
+		(2, 'blue', 'Blue Team', 'Blue Alt', 'BLUE')`)
+	if err != nil {
+		t.Fatalf("insert teams: %v", err)
+	}
+
+	// 1. Set current teams
+	ct, err := repo.SetCurrentTeams(context.Background(), 1, 2)
+	if err != nil {
+		t.Fatalf("SetCurrentTeams error: %v", err)
+	}
+	if ct.TeamAID != 1 || ct.TeamBID != 2 {
+		t.Errorf("got team IDs %d, %d; want 1, 2", ct.TeamAID, ct.TeamBID)
+	}
+	if ct.TeamA.Name != "Red Team" || ct.TeamB.Name != "Blue Team" {
+		t.Errorf("got team names %s, %s; want Red Team, Blue Team", ct.TeamA.Name, ct.TeamB.Name)
+	}
+
+	// 2. Get current teams
+	got, err := repo.GetCurrentTeams(context.Background())
+	if err != nil {
+		t.Fatalf("GetCurrentTeams error: %v", err)
+	}
+	if got.TeamAID != 1 || got.TeamBID != 2 {
+		t.Errorf("got team IDs %d, %d; want 1, 2", got.TeamAID, got.TeamBID)
+	}
+
+	// 3. Set with invalid team ID
+	_, err = repo.SetCurrentTeams(context.Background(), 1, 999)
+	if err == nil {
+		t.Error("expected error for non-existent team_b_id 999")
+	}
+}
+

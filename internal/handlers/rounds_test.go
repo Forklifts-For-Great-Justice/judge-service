@@ -127,6 +127,30 @@ func (m *mockRoundRepo) SetLive(_ context.Context, id int64) (string, error) {
 	return prevStatus, nil
 }
 
+func (m *mockRoundRepo) GetCurrentTeams(_ context.Context) (*models.CurrentTeams, error) {
+	if m.returnErr != nil {
+		return nil, m.returnErr
+	}
+	return &models.CurrentTeams{
+		TeamAID: 1,
+		TeamBID: 2,
+		TeamA:   &models.Team{ID: 1, Name: "Red Team", ClanTag: "RED"},
+		TeamB:   &models.Team{ID: 2, Name: "Blue Team", ClanTag: "BLUE"},
+	}, nil
+}
+
+func (m *mockRoundRepo) SetCurrentTeams(_ context.Context, teamAID, teamBID int64) (*models.CurrentTeams, error) {
+	if m.returnErr != nil {
+		return nil, m.returnErr
+	}
+	return &models.CurrentTeams{
+		TeamAID: teamAID,
+		TeamBID: teamBID,
+		TeamA:   &models.Team{ID: teamAID, Name: "Team A", ClanTag: "A"},
+		TeamB:   &models.Team{ID: teamBID, Name: "Team B", ClanTag: "B"},
+	}, nil
+}
+
 // ==================== List tests ====================
 
 func TestRoundHandler_HandleList_Empty(t *testing.T) {
@@ -533,5 +557,55 @@ func TestRoundHandler_HandleToggleLive_Off(t *testing.T) {
 		t.Errorf("expected live=false, got %v", live)
 	}
 }
+
+func TestRoundHandler_HandleGetCurrentTeams_Success(t *testing.T) {
+	h := handlers.NewRoundHandler(newMockRoundRepo())
+	req := httptest.NewRequest("GET", "/rounds/current/teams", nil)
+	w := httptest.NewRecorder()
+
+	h.HandleGetCurrentTeams(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	var resp map[string]interface{}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	if resp["team_a_id"] != float64(1) || resp["team_b_id"] != float64(2) {
+		t.Errorf("got team IDs %v, %v; want 1, 2", resp["team_a_id"], resp["team_b_id"])
+	}
+}
+
+func TestRoundHandler_HandleSetCurrentTeams_Success(t *testing.T) {
+	h := handlers.NewRoundHandler(newMockRoundRepo())
+
+	payload, _ := json.Marshal(map[string]interface{}{
+		"team_a_id": float64(10),
+		"team_b_id": float64(20),
+	})
+
+	req := httptest.NewRequest("POST", "/rounds/current/teams", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	h.HandleSetCurrentTeams(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	var resp map[string]interface{}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	if resp["team_a_id"] != float64(10) || resp["team_b_id"] != float64(20) {
+		t.Errorf("got team IDs %v, %v; want 10, 20", resp["team_a_id"], resp["team_b_id"])
+	}
+}
+
 
 // ==================== helpers ====================

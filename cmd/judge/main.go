@@ -139,9 +139,17 @@ func NewRouter() http.Handler {
 		roundRepo := repository.NewRoundRepo(db)
 		roundHandler = handlers.NewRoundHandler(roundRepo)
 
+		// Public GET for current round teams
+		r.Get("/rounds/current/teams", roundHandler.HandleGetCurrentTeams)
+		r.Get("/rounds/current", roundHandler.HandleGetCurrentTeams)
+		r.Get("/current_round", roundHandler.HandleGetCurrentTeams)
+
 		r.Group(func(r chi.Router) {
 			r.Method("GET", "/rounds", handlers.AuthMiddleware(http.HandlerFunc(roundHandler.HandleList), "judge"))
 			r.Method("POST", "/rounds", handlers.AuthMiddleware(http.HandlerFunc(roundHandler.HandleCreate), "judge"))
+			r.Method("POST", "/rounds/current/teams", handlers.AuthMiddleware(http.HandlerFunc(roundHandler.HandleSetCurrentTeams), "judge"))
+			r.Method("POST", "/rounds/current", handlers.AuthMiddleware(http.HandlerFunc(roundHandler.HandleSetCurrentTeams), "judge"))
+			r.Method("POST", "/current_round", handlers.AuthMiddleware(http.HandlerFunc(roundHandler.HandleSetCurrentTeams), "judge"))
 			r.Method("GET", "/rounds/{id}", handlers.AuthMiddleware(http.HandlerFunc(roundHandler.HandleGet), "judge"))
 			r.Method("PUT", "/rounds/{id}", handlers.AuthMiddleware(http.HandlerFunc(roundHandler.HandleUpdate), "judge"))
 			r.Method("DELETE", "/rounds/{id}", handlers.AuthMiddleware(http.HandlerFunc(roundHandler.HandleDelete), "judge"))

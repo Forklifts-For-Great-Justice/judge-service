@@ -43,6 +43,45 @@ type RoundUpdateRequest struct {
 	TeamBID   *int64  `json:"team_b_id,omitempty"`
 }
 
+// CurrentTeams represents the teams active in the current round.
+type CurrentTeams struct {
+	MatchID   int64 `json:"match_id,omitempty"`
+	TeamAID   int64 `json:"team_a_id"`
+	TeamBID   int64 `json:"team_b_id"`
+	TeamA     *Team `json:"team_a,omitempty"`
+	TeamB     *Team `json:"team_b,omitempty"`
+}
+
+// SetCurrentTeamsRequest represents the request payload to set current teams.
+type SetCurrentTeamsRequest struct {
+	TeamAID  int64 `json:"team_a_id"`
+	TeamBID  int64 `json:"team_b_id"`
+	Team1ID  int64 `json:"team_1"`
+	Team2ID  int64 `json:"team_2"`
+	Team1AID int64 `json:"team_1_id"`
+	Team2BID int64 `json:"team_2_id"`
+}
+
+func (r *SetCurrentTeamsRequest) GetTeamAID() int64 {
+	if r.TeamAID != 0 {
+		return r.TeamAID
+	}
+	if r.Team1ID != 0 {
+		return r.Team1ID
+	}
+	return r.Team1AID
+}
+
+func (r *SetCurrentTeamsRequest) GetTeamBID() int64 {
+	if r.TeamBID != 0 {
+		return r.TeamBID
+	}
+	if r.Team2ID != 0 {
+		return r.Team2ID
+	}
+	return r.Team2BID
+}
+
 // Validate checks that a Round has all required valid fields.
 func (r *Round) Validate() error {
 	name := strings.TrimSpace(r.RoundName)
@@ -63,3 +102,4 @@ func (r *Round) Validate() error {
 	}
 	return nil
 }
+

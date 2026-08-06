@@ -52,7 +52,7 @@ func (r *ScoreboardRepo) GetScoreboard(ctx context.Context) (*ScoreboardData, er
 		FROM current_match cm
 		LEFT JOIN team ta ON cm.team_a_id = ta.id
 		LEFT JOIN team tb ON cm.team_b_id = tb.id
-		WHERE cm.is_current = TRUE LIMIT 1`
+		LIMIT 1`
 	err := r.db.QueryRowContext(ctx, queryCurrent).Scan(
 		&sb.TeamAPoints, &sb.TeamBPoints,
 		&sb.TeamAHackPoints, &sb.TeamBHackPoints,

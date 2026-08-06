@@ -216,7 +216,7 @@ func (r *RoundRepo) GetCurrentTeams(ctx context.Context) (*models.CurrentTeams, 
 		FROM current_match cm
 		JOIN team ta ON cm.team_a_id = ta.id
 		JOIN team tb ON cm.team_b_id = tb.id
-		WHERE cm.is_current = TRUE LIMIT 1`
+		LIMIT 1`
 
 	err := r.db.QueryRowContext(ctx, queryCurrent).Scan(
 		&matchID,
@@ -322,7 +322,7 @@ func (r *RoundRepo) SetCurrentTeams(ctx context.Context, teamAID, teamBID int64)
 
 	// 3. Clear existing current_match and insert current active row
 	_, _ = r.db.ExecContext(ctx, `DELETE FROM current_match`)
-	queryInsertCurrent := `INSERT INTO current_match (match_id, team_a_id, team_b_id, round_name, is_current) VALUES ($1, $2, $3, 'Current Match', true)`
+	queryInsertCurrent := `INSERT INTO current_match (match_id, team_a_id, team_b_id, round_name) VALUES ($1, $2, $3, 'Current Match')`
 	if _, err := r.db.ExecContext(ctx, queryInsertCurrent, matchID, teamAID, teamBID); err != nil {
 		return nil, fmt.Errorf("failed to update current_match: %w", err)
 	}

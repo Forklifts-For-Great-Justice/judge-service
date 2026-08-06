@@ -84,8 +84,7 @@ func setupRoundDB(t *testing.T) *sql.DB {
 		team_a_hack_points INTEGER NOT NULL DEFAULT 0,
 		team_b_hack_points INTEGER NOT NULL DEFAULT 0,
 		team_a_hackcoins INTEGER NOT NULL DEFAULT 0,
-		team_b_hackcoins INTEGER NOT NULL DEFAULT 0,
-		is_current BOOLEAN NOT NULL DEFAULT TRUE
+		team_b_hackcoins INTEGER NOT NULL DEFAULT 0
 	);`
 
 	if _, err := db.Exec(createTable); err != nil {

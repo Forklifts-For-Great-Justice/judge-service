@@ -10,9 +10,9 @@ import (
 	"net/http"
 	"os"
 
-	_ "github.com/jackc/pgx/v5/stdlib"
 	chi "github.com/go-chi/chi/v5"
 	chiMiddleware "github.com/go-chi/chi/v5/middleware"
+	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/joho/godotenv"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -60,6 +60,9 @@ func NewRouter() http.Handler {
 	db, err := openDB()
 	if err != nil {
 		log.Printf("WARNING: database connection failed: %v — /shenanigans routes disabled", err)
+		os.Exit(1)
+	} else {
+		log.Printf("connected to database")
 	}
 
 	var repo repository.Repository
@@ -67,6 +70,7 @@ func NewRouter() http.Handler {
 	var pub *rabbitmq.Publisher
 
 	if db != nil {
+		log.Printf("loading shenangians")
 		repo = repository.NewShananiganRepo(db)
 		teamRepo = repository.NewTeamRepo(db)
 
@@ -163,6 +167,8 @@ func NewRouter() http.Handler {
 			r.Method("POST", "/rounds/{id}/live", handlers.AuthMiddleware(http.HandlerFunc(roundHandler.HandleToggleLive), "judge"))
 		})
 		roundHandler.RegisterOpenAPI(reg)
+	} else {
+		fmt.Println("no database :(")
 	}
 
 	// Scoreboard route — PUBLIC (no auth)
@@ -317,7 +323,6 @@ CREATE TRIGGER trg_challenge_updated_at
 		team_b_hack_points  INTEGER NOT NULL DEFAULT 0,
 		team_a_hackcoins    INTEGER NOT NULL DEFAULT 0,
 		team_b_hackcoins    INTEGER NOT NULL DEFAULT 0,
-		is_current          BOOLEAN NOT NULL DEFAULT TRUE,
 		created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 		updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
 	);

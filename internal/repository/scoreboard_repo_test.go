@@ -50,8 +50,7 @@ func setupScoreboardDB(t *testing.T) *sql.DB {
 		team_a_hack_points INTEGER NOT NULL DEFAULT 0,
 		team_b_hack_points INTEGER NOT NULL DEFAULT 0,
 		team_a_hackcoins INTEGER NOT NULL DEFAULT 0,
-		team_b_hackcoins INTEGER NOT NULL DEFAULT 0,
-		is_current BOOLEAN NOT NULL DEFAULT TRUE
+		team_b_hackcoins INTEGER NOT NULL DEFAULT 0
 	);
 	`
 	if _, err := db.Exec(createTables); err != nil {
@@ -71,8 +70,8 @@ func TestScoreboardGetFromCurrentMatch(t *testing.T) {
 		t.Fatalf("insert teams: %v", err)
 	}
 
-	_, err = db.Exec(`INSERT INTO current_match (team_a_id, team_b_id, team_a_points, team_b_points, team_a_hack_points, team_b_hack_points, team_a_hackcoins, team_b_hackcoins, is_current)
-		VALUES (1, 2, 10, 5, 100, 50, 20, 15, true)`)
+	_, err = db.Exec(`INSERT INTO current_match (team_a_id, team_b_id, team_a_points, team_b_points, team_a_hack_points, team_b_hack_points, team_a_hackcoins, team_b_hackcoins)
+		VALUES (1, 2, 10, 5, 100, 50, 20, 15)`)
 	if err != nil {
 		t.Fatalf("insert current_match: %v", err)
 	}

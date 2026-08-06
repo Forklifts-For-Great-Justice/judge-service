@@ -151,6 +151,15 @@ func NewRouter() http.Handler {
 		roundHandler.RegisterOpenAPI(reg)
 	}
 
+	// Scoreboard route — PUBLIC (no auth)
+	var sbRepo repository.ScoreboardRepository
+	if db != nil {
+		sbRepo = repository.NewScoreboardRepo(db)
+	}
+	sbHandler := handlers.NewScoreboardHandler(sbRepo)
+	r.Get("/scoreboard", sbHandler.HandleGet)
+	sbHandler.RegisterOpenAPI(reg)
+
 	// Wrap router so SchemaHandler is available on every call.
 	// This serves /openapi.json and registers the route in the spec.
 	return openapi.SchemaHandlerMiddleware(reg, r)
@@ -279,6 +288,28 @@ CREATE TRIGGER trg_challenge_updated_at
 	`
 	if _, err := db.Exec(matchesTableSQL); err != nil {
 		return nil, fmt.Errorf("round migration failed: %w", err)
+	}
+
+	const currentMatchTableSQL = `
+	CREATE TABLE IF NOT EXISTS current_match (
+		id                  SERIAL PRIMARY KEY,
+		match_id            INTEGER REFERENCES matches(id),
+		team_a_id           INTEGER REFERENCES team(id),
+		team_b_id           INTEGER REFERENCES team(id),
+		round_name          TEXT NOT NULL DEFAULT '',
+		team_a_points       INTEGER NOT NULL DEFAULT 0,
+		team_b_points       INTEGER NOT NULL DEFAULT 0,
+		team_a_hack_points  INTEGER NOT NULL DEFAULT 0,
+		team_b_hack_points  INTEGER NOT NULL DEFAULT 0,
+		team_a_hackcoins    INTEGER NOT NULL DEFAULT 0,
+		team_b_hackcoins    INTEGER NOT NULL DEFAULT 0,
+		is_current          BOOLEAN NOT NULL DEFAULT TRUE,
+		created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+		updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+	);
+	`
+	if _, err := db.Exec(currentMatchTableSQL); err != nil {
+		return nil, fmt.Errorf("current_match migration failed: %w", err)
 	}
 
 	return db, nil

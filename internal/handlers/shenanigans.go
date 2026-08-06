@@ -65,20 +65,18 @@ func NewShenaniganHandler(repo repository.Repository, publisher Publisher, metri
 }
 
 // RegisterRoutes wires the shenanigan routes to the chi router.
-// GET routes (/shenanigans, /shenanigans/{id}) are public.
-// Admin routes (POST, PUT, DELETE) require judge scope auth.
+// Admin and catalogue/activation routes require judge scope auth.
 func RegisterRoutes(r chi.Router, h *ShenaniganHandler) {
-	r.Get("/shenanigans", h.HandleList)
-
+	r.Method("GET", "/shenanigans", AuthMiddleware(http.HandlerFunc(h.HandleList), "judge"))
 	r.Method("POST", "/shenanigans", AuthMiddleware(http.HandlerFunc(h.HandleCreate), "judge"))
-	r.Get("/shenanigans/{id}", h.HandleGet)
+	r.Method("GET", "/shenanigans/{id}", AuthMiddleware(http.HandlerFunc(h.HandleGet), "judge"))
 
 	r.Method("PUT", "/shenanigans/{id}", AuthMiddleware(http.HandlerFunc(h.HandleUpdate), "judge"))
 	r.Method("DELETE", "/shenanigans/{id}", AuthMiddleware(http.HandlerFunc(h.HandleDelete), "judge"))
 
-	r.Post("/shenanigans/{id}/activate", h.HandleActivate)
-	r.Get("/shenanigans/{id}/activations", h.HandleListActivations)
-	r.Get("/activations/{purchase_id}", h.HandleGetActivation)
+	r.Method("POST", "/shenanigans/{id}/activate", AuthMiddleware(http.HandlerFunc(h.HandleActivate), "judge"))
+	r.Method("GET", "/shenanigans/{id}/activations", AuthMiddleware(http.HandlerFunc(h.HandleListActivations), "judge"))
+	r.Method("GET", "/activations/{purchase_id}", AuthMiddleware(http.HandlerFunc(h.HandleGetActivation), "judge"))
 }
 
 // RegisterOpenAPI registers the shenanigan routes with the OpenAPI registry.

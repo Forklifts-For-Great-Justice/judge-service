@@ -80,8 +80,8 @@ func TestScoreboardGetFromCurrentMatch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetScoreboard error: %v", err)
 	}
-	if sb.TeamAName != "FOO" || sb.TeamBName != "BAR" {
-		t.Errorf("got team names %s, %s; want FOO, BAR", sb.TeamAName, sb.TeamBName)
+	if sb.TeamAName != "Foo Team" || sb.TeamBName != "Bar Team" {
+		t.Errorf("got team names %s, %s; want Foo Team, Bar Team", sb.TeamAName, sb.TeamBName)
 	}
 	if sb.TeamAPoints != 10 || sb.TeamAHackPoints != 100 || sb.TeamAHackCoins != 20 {
 		t.Errorf("got team A stats %v, %v, %v", sb.TeamAPoints, sb.TeamAHackPoints, sb.TeamAHackCoins)

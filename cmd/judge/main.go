@@ -103,14 +103,11 @@ func NewRouter() http.Handler {
 		teamHandler = handlers.NewTeamHandler(teamRepo)
 	}
 
-	// Team routes — READS PUBLIC, MANIPULATIONS AUTHENTICATED
-	// Public (no auth)
+	// Team routes — ALL AUTHENTICATED (judge scope)
 	if teamHandler != nil {
-		r.Get("/teams", teamHandler.HandleList)
-		r.Get("/teams/{id}", teamHandler.HandleGet)
-
-		// Authenticated (judge scope)
 		r.Group(func(r chi.Router) {
+			r.Method("GET", "/teams", handlers.AuthMiddleware(http.HandlerFunc(teamHandler.HandleList), "judge"))
+			r.Method("GET", "/teams/{id}", handlers.AuthMiddleware(http.HandlerFunc(teamHandler.HandleGet), "judge"))
 			r.Method("POST", "/teams", handlers.AuthMiddleware(http.HandlerFunc(teamHandler.HandleCreate), "judge"))
 			r.Method("PUT", "/teams/{id}", handlers.AuthMiddleware(http.HandlerFunc(teamHandler.HandleUpdate), "judge"))
 			r.Method("DELETE", "/teams/{id}", handlers.AuthMiddleware(http.HandlerFunc(teamHandler.HandleDelete), "judge"))
@@ -123,7 +120,7 @@ func NewRouter() http.Handler {
 		teamHandler.RegisterOpenAPI(reg)
 	}
 
-	// Challenge routes — READS PUBLIC, MANIPULATIONS AUTHENTICATED
+	// Challenge routes — ALL AUTHENTICATED (judge scope)
 	var challengeHandler *handlers.ChallengeHandler
 	if db != nil {
 		challengeRepo := repository.NewChallengeRepo(db)
@@ -131,10 +128,9 @@ func NewRouter() http.Handler {
 	}
 
 	if challengeHandler != nil {
-		r.Get("/challenges", challengeHandler.HandleList)
-		r.Get("/challenges/{id}", challengeHandler.HandleGet)
-
 		r.Group(func(r chi.Router) {
+			r.Method("GET", "/challenges", handlers.AuthMiddleware(http.HandlerFunc(challengeHandler.HandleList), "judge"))
+			r.Method("GET", "/challenges/{id}", handlers.AuthMiddleware(http.HandlerFunc(challengeHandler.HandleGet), "judge"))
 			r.Method("POST", "/challenges", handlers.AuthMiddleware(http.HandlerFunc(challengeHandler.HandleCreate), "judge"))
 			r.Method("PUT", "/challenges/{id}", handlers.AuthMiddleware(http.HandlerFunc(challengeHandler.HandleUpdate), "judge"))
 			r.Method("DELETE", "/challenges/{id}", handlers.AuthMiddleware(http.HandlerFunc(challengeHandler.HandleDelete), "judge"))
@@ -143,18 +139,16 @@ func NewRouter() http.Handler {
 		challengeHandler.RegisterOpenAPI(reg)
 	}
 
-	// Round routes — ALL AUTHENTICATED
+	// Round routes — ALL AUTHENTICATED (judge scope)
 	var roundHandler *handlers.RoundHandler
 	if db != nil {
 		roundRepo := repository.NewRoundRepo(db)
 		roundHandler = handlers.NewRoundHandler(roundRepo)
 
-		// Public GET for current round teams
-		r.Get("/rounds/current/teams", roundHandler.HandleGetCurrentTeams)
-		r.Get("/rounds/current", roundHandler.HandleGetCurrentTeams)
-		r.Get("/current_round", roundHandler.HandleGetCurrentTeams)
-
 		r.Group(func(r chi.Router) {
+			r.Method("GET", "/rounds/current/teams", handlers.AuthMiddleware(http.HandlerFunc(roundHandler.HandleGetCurrentTeams), "judge"))
+			r.Method("GET", "/rounds/current", handlers.AuthMiddleware(http.HandlerFunc(roundHandler.HandleGetCurrentTeams), "judge"))
+			r.Method("GET", "/current_round", handlers.AuthMiddleware(http.HandlerFunc(roundHandler.HandleGetCurrentTeams), "judge"))
 			r.Method("GET", "/rounds", handlers.AuthMiddleware(http.HandlerFunc(roundHandler.HandleList), "judge"))
 			r.Method("POST", "/rounds", handlers.AuthMiddleware(http.HandlerFunc(roundHandler.HandleCreate), "judge"))
 			r.Method("POST", "/rounds/current/teams", handlers.AuthMiddleware(http.HandlerFunc(roundHandler.HandleSetCurrentTeams), "judge"))
@@ -179,6 +173,14 @@ func NewRouter() http.Handler {
 	sbHandler := handlers.NewScoreboardHandler(sbRepo)
 	r.Get("/scoreboard", sbHandler.HandleGet)
 	sbHandler.RegisterOpenAPI(reg)
+
+	// Player routes — PUBLIC / PLAYER (no auth / header auth)
+	if db != nil {
+		playerRepo := repository.NewPlayerRepo(db)
+		playerHandler := handlers.NewPlayerHandler(playerRepo, pub, metrics)
+		handlers.RegisterPlayerRoutes(r, playerHandler)
+		playerHandler.RegisterOpenAPI(reg)
+	}
 
 	// Wrap router so SchemaHandler is available on every call.
 	// This serves /openapi.json and registers the route in the spec.
@@ -267,6 +269,23 @@ CREATE TRIGGER trg_challenge_updated_at
 `
 	if _, err := db.Exec(challengesTableSQL); err != nil {
 		return nil, fmt.Errorf("challenge migration failed: %w", err)
+	}
+
+	// Create challenge_submission table (idempotent).
+	const challengeSubmissionTableSQL = `
+	CREATE TABLE IF NOT EXISTS challenge_submission (
+		id              SERIAL PRIMARY KEY,
+		challenge_id    INTEGER NOT NULL REFERENCES challenge(id),
+		player_id       TEXT NOT NULL,
+		team_id         INTEGER NOT NULL REFERENCES team(id),
+		submitted_flag  TEXT NOT NULL,
+		accepted_at     TIMESTAMPTZ,
+		created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+		accepted        BOOLEAN NOT NULL DEFAULT FALSE
+	);
+	`
+	if _, err := db.Exec(challengeSubmissionTableSQL); err != nil {
+		return nil, fmt.Errorf("challenge_submission migration failed: %w", err)
 	}
 
 	// Create matches table if not exists and ensure round management columns exist (idempotent).

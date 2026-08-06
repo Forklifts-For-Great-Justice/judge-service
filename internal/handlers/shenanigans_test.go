@@ -821,6 +821,8 @@ func TestRegisterRoutes_NoPanic(t *testing.T) {
 	handlers.RegisterRoutes(r, h)
 
 	req := httptest.NewRequest("GET", "/shenanigans", nil)
+	req.Header.Set("x-auth-user", "testjudge")
+	req.Header.Set("x-auth-scope", "judge")
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 

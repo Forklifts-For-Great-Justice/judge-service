@@ -47,8 +47,8 @@ func (r *ScoreboardRepo) GetScoreboard(ctx context.Context) (*ScoreboardData, er
 		cm.team_a_points, cm.team_b_points, 
 		cm.team_a_hack_points, cm.team_b_hack_points, 
 		cm.team_a_hackcoins, cm.team_b_hackcoins,
-		COALESCE(ta.clan_tag, ta.name, ''),
-		COALESCE(tb.clan_tag, tb.name, '')
+		COALESCE(ta.name, ta.clan_tag, ''),
+		COALESCE(tb.name, tb.clan_tag, '')
 		FROM current_match cm
 		LEFT JOIN team ta ON cm.team_a_id = ta.id
 		LEFT JOIN team tb ON cm.team_b_id = tb.id
@@ -68,8 +68,8 @@ func (r *ScoreboardRepo) GetScoreboard(ctx context.Context) (*ScoreboardData, er
 		m.team_a_points, m.team_b_points, 
 		m.team_a_hack_points, m.team_b_hack_points, 
 		m.team_a_hackcoins, m.team_b_hackcoins,
-		COALESCE(ta.clan_tag, ta.name, ''),
-		COALESCE(tb.clan_tag, tb.name, '')
+		COALESCE(ta.name, ta.clan_tag, ''),
+		COALESCE(tb.name, tb.clan_tag, '')
 		FROM matches m
 		LEFT JOIN team ta ON m.team_a_id = ta.id
 		LEFT JOIN team tb ON m.team_b_id = tb.id

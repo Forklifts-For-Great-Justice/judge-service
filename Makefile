@@ -42,6 +42,12 @@ clean:
 	@rm -rf bin/ $(BINARY_NAME)
 	@echo "✨ Cleanup complete! 🗑️"
 
+## 👥 set-teams: Set teams 'foo' and 'bar' for the current round
+set-teams:
+	@echo "🎮 Setting teams 'foo' and 'bar' in current round..."
+	@python3 ./scripts/set_current_round_teams.py
+
+
 ## ❓ help: Display available targets
 help:
 	@echo "⚖️  Judge Service Makefile"

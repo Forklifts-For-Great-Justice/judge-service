@@ -13,6 +13,7 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 	chi "github.com/go-chi/chi/v5"
 	chiMiddleware "github.com/go-chi/chi/v5/middleware"
+	"github.com/joho/godotenv"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -24,6 +25,10 @@ import (
 )
 
 func main() {
+	if err := godotenv.Load(); err != nil {
+		log.Printf("INFO: No .env file loaded (%v)", err)
+	}
+
 	r := NewRouter()
 
 	port := os.Getenv("PORT")
@@ -37,6 +42,7 @@ func main() {
 
 // NewRouter creates the chi router with all routes wired up.
 func NewRouter() http.Handler {
+	_ = godotenv.Load()
 	r := chi.NewRouter()
 	r.Use(chiMiddleware.Logger)
 

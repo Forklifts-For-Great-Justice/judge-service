@@ -59,13 +59,14 @@ func (r *PlayerRepo) GetChallengesForTeam(ctx context.Context, teamID int64) ([]
 	}
 
 	query := `
-		SELECT c.id, c.name, c.description, c.challenge_type, c.location, c.points, c.disabled, c.flag, c.created_at, c.updated_at,
+		SELECT c.id, c.name, c.description, c.challenge_type, c.location, c.points, 
+		       COALESCE(c.disabled, false) AS disabled, c.flag, c.created_at, c.updated_at,
 		       EXISTS(
 		           SELECT 1 FROM challenge_submission cs
 		           WHERE cs.challenge_id = c.id AND cs.team_id = $1 AND cs.accepted = true
 		       ) AS solved
 		FROM challenge c
-		WHERE (c.enabled = true OR c.disabled = false)
+		WHERE (c.disabled IS NULL OR c.disabled = false)
 		ORDER BY c.id ASC`
 
 	rows, err := r.db.QueryContext(ctx, query, teamID)

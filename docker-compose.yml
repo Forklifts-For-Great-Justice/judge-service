@@ -9,10 +9,9 @@ services:
       - scoreboard
     labels:
       - "proxy.enable=true"
-      - "proxy.host=judge.hackfortress.net"
+      - "proxy.host=api.hackfortress.net"
       - "proxy.port=8086"
       - "proxy.auth_required=true"
-      - "proxy.client_id=judge-client"
       - "proxy.openapi_path=/openapi.json"
     logging:
       driver: json-file
@@ -21,7 +20,7 @@ services:
         max-file: "3"
     environment:
       - PORT=8086
-      - DB_DSN=postgres://scoreboard:changeme@scoreboard.hackfortress.net:5432/hackfortress?sslmode=disable
+      - DB_DSN=postgres://scoreboard:changeme@api.hackfortress.net:5432/hackfortress?sslmode=disable
       - RABBITMQ_URL=amqp://admin:adminpassword@admin.hackfortress.net:5672
       - RABBITMQ_EXCHANGE=hackfortress
 

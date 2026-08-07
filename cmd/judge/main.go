@@ -251,7 +251,7 @@ CREATE TABLE IF NOT EXISTS challenge (
 	challenge_type TEXT,
 	location    TEXT,
 	points     INTEGER NOT NULL DEFAULT 50,
-	disabled   BOOLEAN NOT NULL DEFAULT FALSE,
+	enabled BOOLEAN NOT NULL DEFAULT FALSE,
 	flag       TEXT NOT NULL,
 	created_at TIMESTAMP NOT NULL DEFAULT NOW(),
 	updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
@@ -303,7 +303,7 @@ CREATE TRIGGER trg_challenge_updated_at
 		team_b_hackcoins    INTEGER NOT NULL DEFAULT 0,
 		status              TEXT NOT NULL DEFAULT 'scheduled'
 			CONSTRAINT chk_matches_status CHECK (status IN ('scheduled', 'in_progress', 'completed', 'cancelled')),
-		disabled            BOOLEAN NOT NULL DEFAULT FALSE,
+		enabled             BOOLEAN NOT NULL DEFAULT FALSE,
 		ready               BOOLEAN NOT NULL DEFAULT FALSE,
 		live                BOOLEAN NOT NULL DEFAULT FALSE,
 		ready_at            TIMESTAMPTZ,
@@ -348,6 +348,26 @@ CREATE TRIGGER trg_challenge_updated_at
 	`
 	if _, err := db.Exec(currentMatchTableSQL); err != nil {
 		return nil, fmt.Errorf("current_match migration failed: %w", err)
+	}
+
+	const quakeEventsTableSQL = `
+	CREATE TABLE IF NOT EXISTS quake_events (
+		id              SERIAL PRIMARY KEY,
+		match_id        INTEGER NOT NULL REFERENCES matches(id),
+		round_name      TEXT NOT NULL,
+		team_id         INTEGER NOT NULL REFERENCES team(id),
+		victim_team_id  INTEGER REFERENCES team(id),
+		event_name      TEXT NOT NULL,
+		event_type      TEXT NOT NULL,
+		event_data      JSONB,
+		event_time      TIMESTAMPTZ NOT NULL,
+		created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+		updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+		CONSTRAINT chk_quake_events_type CHECK (event_type IN ('kill', 'death', 'suicide', 'flag_grab', 'flag_return', 'flag_drop', 'flag_capture', 'team_kill'))
+	);
+	`
+	if _, err := db.Exec(quakeEventsTableSQL); err != nil {
+		return nil, fmt.Errorf("quake_events migration failed: %w", err)
 	}
 
 	return db, nil

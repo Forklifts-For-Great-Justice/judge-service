@@ -162,16 +162,7 @@ func (r *ShananiganRepo) Update(ctx context.Context, id int64, updates map[strin
 	idx := 1
 
 	for k, v := range updates {
-		cast := ""
-		switch v.(type) {
-		case string:
-			cast = "::text"
-		case int, int64, *int64:
-			cast = "::bigint"
-		case json.RawMessage:
-			cast = "::jsonb"
-		}
-		clauses = append(clauses, fmt.Sprintf("%s=$%d%s", k, idx, cast))
+		clauses = append(clauses, fmt.Sprintf("%s=$%d", k, idx))
 		args = append(args, v)
 		idx++
 	}

@@ -544,7 +544,7 @@ func (h *ShenaniganHandler) HandleListActivations(w http.ResponseWriter, req *ht
 	// the regular GetByID which does not exist, since the shenanigan may have
 	// been soft-deleted — we just want to know if an ID was provided).
 	// Use GetShenaniganByID which calls GetByID (non-deleted only).
-	if _, err := h.repo.GetShenaniganByID(ctx, id); err != nil {
+	if _, err := h.repo.GetByIDDeleted(ctx, id); err != nil {
 		writeError(w, http.StatusNotFound, "shenanigan not found")
 		return
 	}

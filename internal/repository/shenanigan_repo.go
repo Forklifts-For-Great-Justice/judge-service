@@ -418,13 +418,17 @@ func (r *ShananiganRepo) GetActivationsForShenanigan(ctx context.Context, shenan
 	result := make([]*models.ActivationRecord, 0)
 	for rows.Next() {
 		a := &models.ActivationRecord{}
+		var errMsg *string
 		var meta *string
 		err := rows.Scan(
-			&a.PurchaseID, &a.ShenaniganID, &a.Status, &a.ErrorMessage,
+			&a.PurchaseID, &a.ShenaniganID, &a.Status, &errMsg,
 			&a.RconPayload, &meta, &a.CreatedAt, &a.UpdatedAt,
 		)
 		if err != nil {
 			return nil, err
+		}
+		if errMsg != nil {
+			a.ErrorMessage = *errMsg
 		}
 		if meta != nil {
 			a.Metadata = json.RawMessage(*meta)

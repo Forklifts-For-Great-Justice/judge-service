@@ -77,12 +77,17 @@ func NewRouter() http.Handler {
 
 		rabbitMQURL := os.Getenv("RABBITMQ_URL")
 		if rabbitMQURL != "" {
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			pub, err = rabbitmq.NewPublisher(ctx, rabbitMQURL, os.Getenv("RABBITMQ_EXCHANGE"))
-			cancel()
-			if err != nil {
-				log.Printf("WARNING: failed to connect to RabbitMQ — messages will not be published: %v", err)
-			}
+			go func() {
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				p, err := rabbitmq.NewPublisher(ctx, rabbitMQURL, os.Getenv("RABBITMQ_EXCHANGE"))
+				cancel()
+				if err != nil {
+					log.Printf("WARNING: failed to connect to RabbitMQ — messages will not be published: %v", err)
+				} else {
+					log.Printf("connected to RabbitMQ publisher")
+					pub = p
+				}
+			}()
 		}
 	}
 

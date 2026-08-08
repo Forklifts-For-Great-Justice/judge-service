@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/vmihailenco/msgpack/v5"
@@ -30,7 +31,9 @@ type Publisher struct {
 // NewPublisher creates a new Publisher connected to the given RabbitMQ URL.
 // If the connection fails it returns an error — handlers should check for nil.
 func NewPublisher(ctx context.Context, rabbitmqURL string, exchange string) (*Publisher, error) {
-	conn, err := amqp.Dial(rabbitmqURL)
+	conn, err := amqp.DialConfig(rabbitmqURL, amqp.Config{
+		Dial: amqp.DefaultDial(5 * time.Second),
+	})
 	if err != nil {
 		return nil, fmt.Errorf("rabbitmq dial: %w", err)
 	}

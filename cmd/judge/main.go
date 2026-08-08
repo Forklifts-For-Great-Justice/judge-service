@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	chi "github.com/go-chi/chi/v5"
 	chiMiddleware "github.com/go-chi/chi/v5/middleware"
@@ -76,7 +77,9 @@ func NewRouter() http.Handler {
 
 		rabbitMQURL := os.Getenv("RABBITMQ_URL")
 		if rabbitMQURL != "" {
-			pub, err = rabbitmq.NewPublisher(context.Background(), rabbitMQURL, os.Getenv("RABBITMQ_EXCHANGE"))
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			pub, err = rabbitmq.NewPublisher(ctx, rabbitMQURL, os.Getenv("RABBITMQ_EXCHANGE"))
+			cancel()
 			if err != nil {
 				log.Printf("WARNING: failed to connect to RabbitMQ — messages will not be published: %v", err)
 			}

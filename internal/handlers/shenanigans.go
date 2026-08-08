@@ -379,7 +379,7 @@ func (h *ShenaniganHandler) HandleUpdate(w http.ResponseWriter, req *http.Reques
 		updates["target_type"] = string(*body.TargetType)
 	}
 	if body.Cost != nil {
-		val, err := strconv.ParseInt(body.Cost.String(), 10, 64)
+		val, err := body.Cost.Int64()
 		if err != nil {
 			writeError(w, http.StatusBadRequest, "cost must be a valid integer")
 			return

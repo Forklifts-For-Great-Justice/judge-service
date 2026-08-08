@@ -208,6 +208,23 @@ func openDB() (*sql.DB, error) {
 		return nil, fmt.Errorf("migration failed: %w", err)
 	}
 
+	// Ensure shenanigan_activations table exists (idempotent migration).
+	const activationsTableSQL = `
+	CREATE TABLE IF NOT EXISTS shenanigan_activations (
+		purchase_id   UUID PRIMARY KEY,
+		shenanigan_id BIGINT NOT NULL,
+		status        TEXT NOT NULL DEFAULT 'pending',
+		error_message TEXT,
+		rcon_payload  TEXT NOT NULL,
+		metadata      JSONB,
+		created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+		updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+	);
+	`
+	if _, err := db.Exec(activationsTableSQL); err != nil {
+		return nil, fmt.Errorf("shenanigan_activations migration failed: %w", err)
+	}
+
 	// Create teams table (idempotent).
 	const teamsTableSQL = `
 	CREATE OR REPLACE FUNCTION set_updated_at()

@@ -528,6 +528,9 @@ func (h *ShenaniganHandler) HandleActivate(w http.ResponseWriter, req *http.Requ
 		"status":      status,
 		"published":   published,
 	}
+	if err != nil {
+		resp["error"] = err.Error()
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)

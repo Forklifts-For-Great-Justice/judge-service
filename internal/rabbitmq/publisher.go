@@ -40,6 +40,10 @@ func NewPublisher(ctx context.Context, rabbitmqURL string, exchange string) (*Pu
 		return nil, fmt.Errorf("rabbitmq channel: %w", err)
 	}
 
+	if exchange == "" {
+		exchange = "hackfortress"
+	}
+
 	err = ch.ExchangeDeclare(
 		exchange, "topic", true, false, false, false, nil,
 	)

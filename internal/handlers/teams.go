@@ -243,7 +243,7 @@ func (h *TeamHandler) HandleDelete(w http.ResponseWriter, req *http.Request) {
 			writeError(w, http.StatusNotFound, "team not found")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, "failed to delete team")
+		writeError(w, http.StatusInternalServerError, fmt.Sprintf("failed to delete team: %v", err))
 		return
 	}
 

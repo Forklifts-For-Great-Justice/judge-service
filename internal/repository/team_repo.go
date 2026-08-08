@@ -150,7 +150,19 @@ func (r *TeamRepo) Update(ctx context.Context, id int64, updates map[string]any)
 
 // Delete removes a team by its ID. Returns ErrNotFound if absent.
 func (r *TeamRepo) Delete(ctx context.Context, id int64) error {
-	result, err := r.db.ExecContext(ctx, "DELETE FROM team WHERE id=$1", id)
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// Clean up referencing foreign keys if tables exist (safe across sqlite and postgres)
+	_, _ = tx.ExecContext(ctx, "DELETE FROM current_match WHERE team_a_id=$1 OR team_b_id=$1", id)
+	_, _ = tx.ExecContext(ctx, "DELETE FROM quake_events WHERE team_id=$1 OR victim_team_id=$1", id)
+	_, _ = tx.ExecContext(ctx, "DELETE FROM challenge_submission WHERE team_id=$1", id)
+	_, _ = tx.ExecContext(ctx, "DELETE FROM matches WHERE team_a_id=$1 OR team_b_id=$1", id)
+
+	result, err := tx.ExecContext(ctx, "DELETE FROM team WHERE id=$1", id)
 	if err != nil {
 		return err
 	}
@@ -158,5 +170,5 @@ func (r *TeamRepo) Delete(ctx context.Context, id int64) error {
 	if rowsAffected == 0 {
 		return ErrNotFound
 	}
-	return nil
+	return tx.Commit()
 }

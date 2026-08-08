@@ -495,6 +495,15 @@ func (h *ShenaniganHandler) HandleActivate(w http.ResponseWriter, req *http.Requ
 		return
 	}
 
+	actRecord := &models.ActivationRecord{
+		PurchaseID:   record.PurchaseID,
+		ShenaniganID: id,
+		Status:       "confirmed",
+		RconPayload:  record.RconPayload,
+		Metadata:     body.Metadata,
+	}
+	_ = h.repo.SaveActivation(ctx, actRecord)
+
 	published := false
 	status := "ok"
 	if h.publisher != nil {

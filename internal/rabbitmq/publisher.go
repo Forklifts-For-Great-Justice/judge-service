@@ -12,10 +12,10 @@ import (
 
 // ShenaniganMessage is the payload published when a shenanigan is activated.
 type ShenaniganMessage struct {
-	PurchaseID   string          `json:"purchase_id"`
-	ShenaniganID string          `json:"shenanigan_id"`
-	RconPayload  string          `json:"rcon_payload"`
-	Metadata     json.RawMessage `json:"metadata,omitempty"`
+	PurchaseID   string          `json:"purchase_id" msgpack:"purchase_id"`
+	ShenaniganID any             `json:"shenanigan_id" msgpack:"shenanigan_id"`
+	RconPayload  string          `json:"rcon_payload" msgpack:"rcon_payload"`
+	Metadata     json.RawMessage `json:"metadata,omitempty" msgpack:"metadata,omitempty"`
 }
 
 // Publisher wraps an AMQP connection and exposes a Publish method.

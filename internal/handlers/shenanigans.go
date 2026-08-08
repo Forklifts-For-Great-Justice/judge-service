@@ -509,7 +509,7 @@ func (h *ShenaniganHandler) HandleActivate(w http.ResponseWriter, req *http.Requ
 	if h.publisher != nil {
 		message := rabbitmq.ShenaniganMessage{
 			PurchaseID:   record.PurchaseID.String(),
-			ShenaniganID: fmt.Sprintf("%d", id),
+			ShenaniganID: id,
 			RconPayload:  record.RconPayload,
 			Metadata:     body.Metadata,
 		}

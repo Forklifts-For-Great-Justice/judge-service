@@ -673,8 +673,8 @@ func TestHandleActivate_WithPublisher(t *testing.T) {
 	if pub.lastMsg.RconPayload != "say active" {
 		t.Errorf("expected rcon_payload 'say active', got %s", pub.lastMsg.RconPayload)
 	}
-	if pub.lastMsg.ShenaniganID != "1" {
-		t.Errorf("expected shenanigan_id 1, got %s", pub.lastMsg.ShenaniganID)
+	if fmt.Sprintf("%v", pub.lastMsg.ShenaniganID) != "1" {
+		t.Errorf("expected shenanigan_id 1, got %v", pub.lastMsg.ShenaniganID)
 	}
 }
 

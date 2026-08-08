@@ -397,8 +397,8 @@ func (h *ShenaniganHandler) HandleUpdate(w http.ResponseWriter, req *http.Reques
 
 	// Validate target_type if it is being changed
 	if tt, ok := updates["target_type"].(string); ok {
-		if err := (&models.Shananigan{TargetType: tt}).Validate(); err != nil {
-			writeError(w, http.StatusBadRequest, err.Error())
+		if tt != "team" && tt != "all" {
+			writeError(w, http.StatusBadRequest, "target_type must be \"team\" or \"all\"")
 			return
 		}
 	}

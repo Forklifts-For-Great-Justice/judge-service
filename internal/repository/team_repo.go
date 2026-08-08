@@ -150,12 +150,18 @@ func (r *TeamRepo) Update(ctx context.Context, id int64, updates map[string]any)
 
 // Delete removes a team by its ID. Returns ErrNotFound if absent.
 func (r *TeamRepo) Delete(ctx context.Context, id int64) error {
-	// Clean up referencing records across all dependent tables
-	_, _ = r.db.ExecContext(ctx, "DELETE FROM current_match WHERE team_a_id=$1 OR team_b_id=$1", id)
+	// Delete in reverse order of foreign key dependency hierarchy:
+	// 1. current_match (references matches AND team)
+	_, _ = r.db.ExecContext(ctx, "DELETE FROM current_match WHERE team_a_id=$1 OR team_b_id=$1 OR match_id IN (SELECT id FROM matches WHERE team_a_id=$1 OR team_b_id=$1)", id)
+
+	// 2. quake_events & challenge_submission (reference team)
 	_, _ = r.db.ExecContext(ctx, "DELETE FROM quake_events WHERE team_id=$1 OR victim_team_id=$1", id)
 	_, _ = r.db.ExecContext(ctx, "DELETE FROM challenge_submission WHERE team_id=$1", id)
+
+	// 3. matches (references team)
 	_, _ = r.db.ExecContext(ctx, "DELETE FROM matches WHERE team_a_id=$1 OR team_b_id=$1", id)
 
+	// 4. team
 	result, err := r.db.ExecContext(ctx, "DELETE FROM team WHERE id=$1", id)
 	if err != nil {
 		return err

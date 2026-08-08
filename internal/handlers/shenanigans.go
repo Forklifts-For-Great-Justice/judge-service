@@ -367,16 +367,16 @@ func (h *ShenaniganHandler) HandleUpdate(w http.ResponseWriter, req *http.Reques
 
 	updates := make(map[string]any)
 	if body.Name != nil {
-		updates["name"] = *body.Name
+		updates["name"] = string(*body.Name)
 	}
 	if body.Description != nil {
-		updates["description"] = *body.Description
+		updates["description"] = string(*body.Description)
 	}
 	if body.RconPayload != nil {
-		updates["rcon_payload"] = *body.RconPayload
+		updates["rcon_payload"] = string(*body.RconPayload)
 	}
 	if body.TargetType != nil {
-		updates["target_type"] = *body.TargetType
+		updates["target_type"] = string(*body.TargetType)
 	}
 	if body.Cost != nil {
 		val, err := strconv.ParseInt(body.Cost.String(), 10, 64)

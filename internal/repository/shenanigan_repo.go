@@ -239,6 +239,9 @@ func (r *ShananiganRepo) Activate(ctx context.Context, shenaniganID int64) (*Pur
 		&s.Cost, &meta, &s.CreatedAt, &s.UpdatedAt,
 	)
 	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, ErrNotFound
+		}
 		return nil, err
 	}
 	if meta != nil {

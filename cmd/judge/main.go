@@ -70,15 +70,17 @@ func NewRouter() http.Handler {
 	var teamRepo repository.TeamRepository
 	var pub *rabbitmq.Publisher
 
+	if db != nil {
+		log.Printf("loading shenangians")
+		repo = repository.NewShananiganRepo(db)
+		teamRepo = repository.NewTeamRepo(db)
+	}
+
 	// Shenanigan routes
 	metrics := handlers.NewCounterMetrics(shenaniganActivationsTotal, shenaniganCreationTotal, shenaniganPublishFailuresTotal)
 	shenaniganHandler := handlers.NewShenaniganHandler(repo, pub, metrics)
 
 	if db != nil {
-		log.Printf("loading shenangians")
-		repo = repository.NewShananiganRepo(db)
-		teamRepo = repository.NewTeamRepo(db)
-
 		rabbitMQURL := os.Getenv("RABBITMQ_URL")
 		if rabbitMQURL != "" {
 			go func() {

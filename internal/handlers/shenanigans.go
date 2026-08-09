@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"sync/atomic"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -22,9 +23,10 @@ import (
 
 // ShenaniganHandler handles HTTP requests for /shenanigans
 type ShenaniganHandler struct {
-	repo      repository.Repository
-	publisher Publisher
-	metrics   ShenaniganMetrics
+	repo          repository.Repository
+	publisher     Publisher
+	publisherAtomic atomic.Value
+	metrics       ShenaniganMetrics
 }
 
 // Publisher defines the RabbitMQ publisher interface for shenanigan activation messages.
@@ -61,7 +63,18 @@ func (c *counterMetrics) IncrementPublishFailures() { c.publishFailures.Inc() }
 
 // NewShenaniganHandler creates a new handler with the given repository, publisher, and metrics.
 func NewShenaniganHandler(repo repository.Repository, publisher Publisher, metrics ShenaniganMetrics) *ShenaniganHandler {
-	return &ShenaniganHandler{repo: repo, publisher: publisher, metrics: metrics}
+	h := &ShenaniganHandler{repo: repo, publisher: publisher, metrics: metrics}
+	if publisher != nil {
+		h.publisherAtomic.Store(publisher)
+	}
+	return h
+}
+
+// SetPublisher dynamically sets or updates the publisher.
+func (h *ShenaniganHandler) SetPublisher(publisher Publisher) {
+	if publisher != nil {
+		h.publisherAtomic.Store(publisher)
+	}
 }
 
 // RegisterRoutes wires the shenanigan routes to the chi router.
@@ -506,7 +519,14 @@ func (h *ShenaniganHandler) HandleActivate(w http.ResponseWriter, req *http.Requ
 
 	published := false
 	status := "ok"
-	if h.publisher != nil {
+	pub := h.publisher
+	if v := h.publisherAtomic.Load(); v != nil {
+		if p, ok := v.(Publisher); ok {
+			pub = p
+		}
+	}
+
+	if pub != nil {
 		message := rabbitmq.ShenaniganMessage{
 			PurchaseID:   record.PurchaseID.String(),
 			ShenaniganID: id,
@@ -514,7 +534,7 @@ func (h *ShenaniganHandler) HandleActivate(w http.ResponseWriter, req *http.Requ
 			Metadata:     body.Metadata,
 		}
 
-		published, err = h.publisher.Publish(ctx, message)
+		published, err = pub.Publish(ctx, message)
 		if err != nil {
 			if h.metrics != nil {
 				h.metrics.IncrementPublishFailures()

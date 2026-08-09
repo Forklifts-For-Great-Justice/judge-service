@@ -70,6 +70,10 @@ func NewRouter() http.Handler {
 	var teamRepo repository.TeamRepository
 	var pub *rabbitmq.Publisher
 
+	// Shenanigan routes
+	metrics := handlers.NewCounterMetrics(shenaniganActivationsTotal, shenaniganCreationTotal, shenaniganPublishFailuresTotal)
+	shenaniganHandler := handlers.NewShenaniganHandler(repo, pub, metrics)
+
 	if db != nil {
 		log.Printf("loading shenangians")
 		repo = repository.NewShananiganRepo(db)
@@ -85,7 +89,7 @@ func NewRouter() http.Handler {
 					log.Printf("WARNING: failed to connect to RabbitMQ — messages will not be published: %v", err)
 				} else {
 					log.Printf("connected to RabbitMQ publisher")
-					pub = p
+					shenaniganHandler.SetPublisher(p)
 				}
 			}()
 		}
@@ -100,9 +104,6 @@ func NewRouter() http.Handler {
 	handlers.RegisterHealthRoute(r, reg)
 	handlers.RegisterHealthOpenAPI(reg)
 
-	// Shenanigan routes
-	metrics := handlers.NewCounterMetrics(shenaniganActivationsTotal, shenaniganCreationTotal, shenaniganPublishFailuresTotal)
-	shenaniganHandler := handlers.NewShenaniganHandler(repo, pub, metrics)
 	handlers.RegisterRoutes(r, shenaniganHandler)
 
 	// Team routes
